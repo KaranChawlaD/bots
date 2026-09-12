@@ -36,8 +36,14 @@ npm run kijiji -- view https://www.kijiji.ca/v-view-details.html?adId=1700000000
 npm run kijiji -- message 1700000000 --account primary --text "Hi, is this still available?"
 npm run kijiji -- message 1700000000 --dry-run      # types the message, stops before sending
 
-# work through a file of per-account tasks, one at a time
-npm run kijiji -- run plan.example.json
+# price offers: each listing's ask is read live, the offer is drafted from it, you approve
+npm run kijiji -- offer 1700000000 1700000001 --percent 80 --floor 40 --note "Can pick up this weekend."
+npm run kijiji -- offer 1700000000 --amount 150 --account secondary --dry-run
+
+# turn a saved search into an offer plan, edit it, then work through it
+npm run kijiji -- search "ps5 controller" --json > results.json
+npm run kijiji -- plan-offers results.json --percent 80 --out offer-plan.json
+npm run kijiji -- run offer-plan.json
 npm run kijiji -- history           # what each account has already messaged
 ```
 
@@ -50,7 +56,11 @@ Messaging is deliberately one-at-a-time, not a broadcast:
 
 - **One conversation per listing per account** — repeats are refused using `data/sent-messages.json`.
 - **Spacing and a daily cap** — `minSecondsBetweenMessages` and `maxMessagesPerAccountPerDay` in `accounts.json`.
-- **Approval** — each message is printed with the listing title and price and waits for `y`, unless you pass `--yes` for that run.
+- **Approval** — each message is printed with the listing title, asking price and offer, and waits for `y`, unless you pass `--yes` for that run.
+
+Offers are priced per listing from that listing's live asking price (`--percent`,
+with `--floor`/`--ceiling` bounds) or pinned with `--amount`, and rotate between
+wording variants so they don't read as a copy-paste blast.
 
 ## Layout
 
@@ -64,6 +74,7 @@ src/
   steel/profiles.ts   per-account cookie/localStorage storage
   kijiji/auth.ts      sign-in and two-factor
   kijiji/listings.ts  search results and listing details
+  kijiji/offers.ts    offer pricing and message drafting
   kijiji/messages.ts  the send flow
   kijiji/selectors.ts every DOM selector, with fallbacks
 ```
