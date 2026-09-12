@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>kijiji agents</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>kijiji agents</h1>
+      <p id="limits" class="muted"></p>
+    </header>
+
+    <main>
+      <section class="panel" id="agents-panel">
+        <h2>Agents</h2>
+        <ul id="agents"></ul>
+        <button data-command="login">Sign in selected</button>
+      </section>
+
+      <section class="panel">
+        <nav id="tabs">
+          <button class="tab active" data-tab="search">Search</button>
+          <button class="tab" data-tab="view">Listing</button>
+          <button class="tab" data-tab="offer">Offer</button>
+          <button class="tab" data-tab="message">Message</button>
+          <button class="tab" data-tab="post">Post</button>
+          <button class="tab" data-tab="history">History</button>
+        </nav>
+
+        <form class="view" id="search" data-command="search">
+          <label>Keywords<input name="keywords" placeholder="ps5 controller" required /></label>
+          <div class="row">
+            <label>Limit<input name="limit" type="number" value="10" min="1" /></label>
+            <label>Min $<input name="minPrice" type="number" /></label>
+            <label>Max $<input name="maxPrice" type="number" /></label>
+            <label
+              >Sort<select name="sort">
+                <option value="">Kijiji default</option>
+                <option value="dateDesc">Newest</option>
+                <option value="priceAsc">Cheapest</option>
+                <option value="priceDesc">Dearest</option>
+              </select></label
+            >
+          </div>
+          <button type="submit">Search with selected agents</button>
+        </form>
+
+        <form class="view hidden" id="view" data-command="view">
+          <label>Listing URL or ad id<input name="listing" required /></label>
+          <button type="submit">Open listing</button>
+        </form>
+
+        <form class="view hidden" id="offer" data-command="offer">
+          <label
+            >Listings (one per line)<textarea name="listings" rows="3" required></textarea></label
+          >
+          <div class="row">
+            <label>Percent of ask<input name="percent" type="number" value="85" /></label>
+            <label>Or fixed $<input name="amount" type="number" /></label>
+            <label>Floor $<input name="floor" type="number" /></label>
+            <label>Ceiling $<input name="ceiling" type="number" /></label>
+          </div>
+          <label>Note (optional)<input name="note" placeholder="Can pick up this weekend." /></label>
+          <div class="row">
+            <label class="check"
+              ><input name="priceMatch" type="checkbox" /> Cite cheaper live listings</label
+            >
+            <label>Comps<input name="comps" type="number" value="3" min="1" /></label>
+            <label class="check"><input name="dryRun" type="checkbox" checked /> Dry run</label>
+          </div>
+          <button type="submit">Draft offers</button>
+          <p class="muted">Each send is shown to you for approval before it goes out.</p>
+        </form>
+
+        <form class="view hidden" id="message" data-command="message">
+          <label>Listing URL or ad id<input name="listing" required /></label>
+          <label>Message<textarea name="text" rows="5" required></textarea></label>
+          <label class="check"><input name="dryRun" type="checkbox" checked /> Dry run</label>
+          <button type="submit">Send from selected agent</button>
+        </form>
+
+        <form class="view hidden" id="post" data-command="post">
+          <label>Title<input name="title" required /></label>
+          <label>Description<textarea name="description" rows="4" required></textarea></label>
+          <div class="row">
+            <label>Price<input name="price" placeholder="45 / free / contact" required /></label>
+            <label>Location<input name="location" placeholder="M5V 2T6" required /></label>
+            <label>Location id<input name="locationId" placeholder="1700273" /></label>
+          </div>
+          <label
+            >Category<input
+              name="category"
+              placeholder="Buy &amp; Sell &gt; Video Games &amp; Consoles &gt; Nintendo Switch"
+              required
+          /></label>
+          <label>Photos (paths, one per line)<textarea name="photos" rows="2"></textarea></label>
+          <label class="check"><input name="dryRun" type="checkbox" checked /> Dry run</label>
+          <button type="submit">Fill the ad form</button>
+          <p class="muted">Publishing asks for your approval first.</p>
+        </form>
+
+        <div class="view hidden" id="history">
+          <ul id="history-list"></ul>
+        </div>
+      </section>
+
+      <section class="panel" id="run">
+        <h2>Run <span id="job-status" class="badge"></span></h2>
+        <div id="prompt" class="prompt hidden"></div>
+        <pre id="console"></pre>
+        <div id="result"></div>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

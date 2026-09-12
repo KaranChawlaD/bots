@@ -79,8 +79,24 @@ export function checkSendLimits(
   return { allowed: true };
 }
 
+export interface Prompter {
+  ask(question: string): Promise<string>;
+  confirm(question: string): Promise<boolean>;
+}
+
+let prompter: Prompter | undefined;
+
+/**
+ * Route approvals and codes somewhere other than the terminal — the web UI
+ * answers them from the browser. Unset to go back to the terminal.
+ */
+export function setPrompter(next: Prompter | undefined): void {
+  prompter = next;
+}
+
 /** Read a one-off value (a verification code) from the terminal. */
 export async function ask(question: string): Promise<string> {
+  if (prompter) return (await prompter.ask(question)).trim();
   if (!process.stdin.isTTY) {
     throw new Error(`${question} — but stdin is not a terminal. Re-run interactively.`);
   }
@@ -94,6 +110,7 @@ export async function ask(question: string): Promise<string> {
 
 /** Ask on the terminal before a message actually goes out. */
 export async function confirm(question: string): Promise<boolean> {
+  if (prompter) return prompter.confirm(question);
   if (!process.stdin.isTTY) {
     throw new Error(
       "Confirmation needed but stdin is not a terminal. Re-run interactively, or pass --yes to approve this run.",
