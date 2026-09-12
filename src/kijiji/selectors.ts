@@ -144,6 +144,8 @@ export const selectors = {
     'button:has-text("Post Ad")',
     'button[type="submit"]',
   ],
+  /** Shown above the form when Kijiji refuses a submission. */
+  postFormError: ['text=/please fix the errors on the page/i', '[role="alert"]'],
   postSuccessMarker: [
     'text=/your ad is (now )?(live|posted)/i',
     '[data-testid="post-ad-success"]',

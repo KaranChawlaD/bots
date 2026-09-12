@@ -94,13 +94,13 @@ export async function postListing(
   await chooseCategory(agent, draft);
   await ensureSiteLocation(agent, draft);
 
-  const titleField = await findFirst(page, "postTitleField", 30_000);
+  const titleField = await findFirst(page, "postTitleField", 15_000);
   if (titleField) await typeSlowly(titleField, draft.title);
   else log.debug("title already carried over from the category step");
   await typeSlowly(await requireFirst(page, "postDescriptionField"), draft.description);
 
   if (typeof draft.price === "number") {
-    const priceField = await findFirst(page, "postPriceField", 10_000);
+    const priceField = await findFirst(page, "postPriceField", 4_000);
     if (priceField) await typeSlowly(priceField, String(draft.price));
     else log.warn("no price field on this category's form — continuing without one");
   }
@@ -125,8 +125,8 @@ export async function postListing(
   }
 
   await (await requireFirst(page, "postSubmitButton")).click();
-  await page.waitForLoadState("domcontentloaded").catch(() => undefined);
-  const confirmed = await findFirst(page, "postSuccessMarker", 30_000);
+  await settleSubmission(page);
+  const confirmed = !onDetailsForm(page) && (await findFirst(page, "postSuccessMarker", 10_000));
   if (!confirmed) {
     const complaints = await formComplaints(page);
     throw new Error(
@@ -148,13 +148,13 @@ export async function postListing(
  */
 async function chooseCategory(agent: Agent, draft: ListingDraft): Promise<void> {
   const { page } = agent;
-  const input = await findFirst(page, "postTitleSeedField", 20_000);
+  const input = await findFirst(page, "postTitleSeedField", 12_000);
   if (!input) {
     log.warn("no category picker on this page — assuming the form starts at the details step");
     return;
   }
   await typeSlowly(input, draft.title);
-  const reveal = await findFirst(page, "postContinueButton", 8_000);
+  const reveal = await findFirst(page, "postContinueButton", 5_000);
   if (reveal) await reveal.click();
 
   const path = draft.category
@@ -173,7 +173,7 @@ async function chooseCategory(agent: Agent, draft: ListingDraft): Promise<void> 
             `Check the category path in the draft against Kijiji's own list.`,
         );
       }
-      const fallback = await findFirst(page, "postCategorySuggestion", 10_000);
+      const fallback = await findFirst(page, "postCategorySuggestion", 6_000);
       if (!fallback) {
         throw new Error(
           `Kijiji offered no category for "${draft.title}". Try a title that names the item plainly.`,
@@ -181,11 +181,11 @@ async function chooseCategory(agent: Agent, draft: ListingDraft): Promise<void> 
       }
       log.warn(`no category matched "${step}" — taking Kijiji's own suggestion`);
       await clickCategory(fallback);
-      await sleep(1_500);
+      await sleep(400);
       break;
     }
     await clickCategory(option);
-    await sleep(1_500);
+    await sleep(400);
   }
   await page.waitForURL(/p-post-ad\.html/, { timeout: 30_000 }).catch(() => undefined);
   if (!onDetailsForm(page)) {
@@ -194,6 +194,19 @@ async function chooseCategory(agent: Agent, draft: ListingDraft): Promise<void> 
     );
   }
   log.info(`[${agent.account.id}] category chosen, on the posting form`);
+}
+
+/**
+ * A published ad leaves the form for its own page; a rejected one stays put and
+ * says so, and there is no point waiting out the rest of the timeout then.
+ */
+async function settleSubmission(page: Agent["page"]): Promise<void> {
+  const deadline = Date.now() + 45_000;
+  while (Date.now() < deadline) {
+    if (!onDetailsForm(page)) return;
+    if (await findFirst(page, "postFormError", 0)) return;
+    await sleep(500);
+  }
 }
 
 function onDetailsForm(page: Agent["page"]): boolean {
@@ -216,15 +229,14 @@ async function clickCategory(option: Locator): Promise<void> {
 async function matchingOption(agent: Agent, category: string): Promise<Locator | undefined> {
   const { page } = agent;
   const wanted = category.trim().toLowerCase();
-  if (!(await findFirst(page, "postCategoryOption", 10_000))) return undefined;
+  if (!(await findFirst(page, "postCategoryOption", 6_000))) return undefined;
   for (const selector of selectors.postCategoryOption) {
     const options = page.locator(selector);
-    const count = await options.count().catch(() => 0);
-    for (let index = 0; index < count; index += 1) {
-      const option = options.nth(index);
-      const label = (await option.innerText().catch(() => "")).trim().toLowerCase();
-      if (label === wanted) return option;
-    }
+    // One call for every label: a category level holds dozens of them, and
+    // asking each in turn is a round trip each.
+    const labels = await options.allInnerTexts().catch(() => [] as string[]);
+    const hit = labels.findIndex((label) => label.trim().toLowerCase() === wanted);
+    if (hit !== -1) return options.nth(hit);
   }
   return undefined;
 }
@@ -235,7 +247,7 @@ async function matchingOption(agent: Agent, category: string): Promise<Locator |
  */
 async function ensureSiteLocation(agent: Agent, draft: ListingDraft): Promise<void> {
   const { page } = agent;
-  if (!(await findFirst(page, "siteLocationPrompt", 5_000))) return;
+  if (!(await findFirst(page, "siteLocationPrompt", 1_500))) return;
   if (!draft.locationId) {
     throw new Error(
       `Kijiji wants an area before it shows the ad form. Add "locationId" to the draft — ` +
@@ -248,7 +260,7 @@ async function ensureSiteLocation(agent: Agent, draft: ListingDraft): Promise<vo
   await dismissOverlays(page);
   await open(page, form);
   await dismissOverlays(page);
-  if (await findFirst(page, "siteLocationPrompt", 5_000)) {
+  if (await findFirst(page, "siteLocationPrompt", 1_500)) {
     throw new Error(
       `Kijiji still wants an area after setting locationId ${draft.locationId} — check that id.`,
     );
@@ -269,11 +281,13 @@ async function fillLocation(agent: Agent, location: string): Promise<void> {
     return;
   }
   const wanted = location.toLowerCase().replace(/\s+/g, "");
-  const attempts = [location, location.replace(/\s+/g, ""), location.split(/\s+/)[0] ?? location];
+  // Kijiji answers to the first half of a postal code; the whole of it often
+  // matches nothing, so the shorter query goes first.
+  const attempts = [location.split(/\s+/)[0] ?? location, location, location.replace(/\s+/g, "")];
   for (const attempt of [...new Set(attempts)]) {
     await field.click();
     await field.fill("");
-    await field.pressSequentially(attempt, { delay: 120 });
+    await field.pressSequentially(attempt, { delay: 40 });
     const options = await locationOptions(agent);
     if (options.length === 0) continue;
     const exact = await firstMatching(options, wanted);
@@ -288,7 +302,7 @@ async function fillLocation(agent: Agent, location: string): Promise<void> {
 
 async function locationOptions(agent: Agent): Promise<Locator[]> {
   const { page } = agent;
-  if (!(await findFirst(page, "postLocationSuggestion", 6_000))) return [];
+  if (!(await findFirst(page, "postLocationSuggestion", 2_500))) return [];
   for (const selector of selectors.postLocationSuggestion) {
     const found = await page.locator(selector).all();
     if (found.length > 0) return found;
@@ -297,11 +311,16 @@ async function locationOptions(agent: Agent): Promise<Locator[]> {
 }
 
 async function firstMatching(options: Locator[], wanted: string): Promise<Locator | undefined> {
-  for (const option of options) {
-    const label = (await option.innerText().catch(() => "")).toLowerCase().replace(/\s+/g, "");
-    if (label.includes(wanted)) return option;
-  }
-  return undefined;
+  const labels = await Promise.all(
+    options.map((option) =>
+      option
+        .innerText()
+        .catch(() => "")
+        .then((text) => text.toLowerCase().replace(/\s+/g, "")),
+    ),
+  );
+  const hit = labels.findIndex((label) => label.includes(wanted));
+  return hit === -1 ? undefined : options[hit];
 }
 
 /** Whatever the form is complaining about, so a rejected submit says why. */

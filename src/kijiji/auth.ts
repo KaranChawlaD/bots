@@ -8,14 +8,35 @@ import { KIJIJI_BASE, LOGIN_URL } from "./urls.js";
 
 const log = logger("auth");
 
+/**
+ * Kijiji's own pages are heavy, and rendering one only to look at the header
+ * costs about ten seconds. An account-only page fetched with the browser's
+ * cookies answers the same question in one request: it serves the page when
+ * signed in and bounces to the login host when not.
+ */
+async function signedInPerCookies(agent: Agent): Promise<boolean | undefined> {
+  const response = await agent.page.request
+    .get(`${KIJIJI_BASE}/m-my-ads/active/1`, { maxRedirects: 0, timeout: 15_000 })
+    .catch(() => undefined);
+  if (!response) return undefined;
+  const status = response.status();
+  if (status === 200) return true;
+  if (status >= 300 && status < 400) return false;
+  return undefined;
+}
+
 export async function isLoggedIn(agent: Agent): Promise<boolean> {
   const { page } = agent;
+  const quick = await signedInPerCookies(agent);
+  if (quick !== undefined) return quick;
   if (!page.url().startsWith(KIJIJI_BASE)) {
     await open(page, KIJIJI_BASE);
   }
   await dismissOverlays(page);
-  if (await findFirst(page, "signedOutMarker", 5_000)) return false;
-  return (await findFirst(page, "loggedInMarker", 5_000)) !== undefined;
+  // The signed-out header is only worth a glance; waiting belongs on the
+  // signed-in markers, which is the case worth being sure about.
+  if (await findFirst(page, "signedOutMarker", 0)) return false;
+  return (await findFirst(page, "loggedInMarker", 8_000)) !== undefined;
 }
 
 /**

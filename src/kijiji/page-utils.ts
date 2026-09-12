@@ -16,19 +16,26 @@ export async function open(page: Page, url: string): Promise<void> {
   }
 }
 
-/** First selector in the fallback list that resolves to a visible element. */
+/**
+ * First selector in the fallback list that resolves to a visible element. The
+ * candidates are checked in one batch rather than one at a time: against a
+ * remote browser each check is a round trip, and a list that misses costs as
+ * many of them as it is long.
+ */
 export async function findFirst(
   page: Page,
   key: SelectorKey,
   timeoutMs = 10_000,
 ): Promise<Locator | undefined> {
+  const candidates = selectors[key].map((selector) => page.locator(selector).first());
   const deadline = Date.now() + timeoutMs;
   do {
-    for (const selector of selectors[key]) {
-      const locator = page.locator(selector).first();
-      if (await locator.isVisible().catch(() => false)) return locator;
-    }
-    await page.waitForTimeout(250);
+    const visible = await Promise.all(
+      candidates.map((locator) => locator.isVisible().catch(() => false)),
+    );
+    const hit = visible.indexOf(true);
+    if (hit !== -1) return candidates[hit];
+    await page.waitForTimeout(200);
   } while (Date.now() < deadline);
   return undefined;
 }
@@ -55,34 +62,25 @@ export async function textOf(page: Page, key: SelectorKey, timeoutMs = 3_000): P
 
 /**
  * Type like a person rather than pasting the whole string at once. Every
- * keystroke is a round trip to the remote browser, so a quoted offer of several
- * hundred characters would take minutes: set the bulk in one go and only type
- * the tail, which is what React-backed fields need to see anyway.
+ * keystroke is a round trip to the remote browser, so only the tail is typed —
+ * enough for React-backed fields to see real key events — and the rest is set
+ * in one go.
  */
-export async function typeSlowly(locator: Locator, value: string): Promise<void> {
-  const TYPED_TAIL = 40;
+export async function typeSlowly(locator: Locator, value: string, tailLength = 8): Promise<void> {
   await locator.click();
-  await locator.fill("");
-  const tail = value.length > 120 ? value.slice(-TYPED_TAIL) : value;
-  if (tail.length < value.length) {
-    await locator.fill(value.slice(0, value.length - tail.length));
-  }
-  await locator.pressSequentially(tail, { delay: 30, timeout: 60_000 });
+  const tail = value.length > tailLength ? value.slice(-tailLength) : value;
+  await locator.fill(value.slice(0, value.length - tail.length));
+  await locator.pressSequentially(tail, { delay: 20, timeout: 60_000 });
 }
 
+const DISMISSERS =
+  'button:has-text("Accept all"), button:has-text("Accept All"), button:has-text("I agree"), ' +
+  '[data-testid="cookie-banner"] button, button[aria-label="Close"]';
+
 export async function dismissOverlays(page: Page): Promise<void> {
-  const dismissers = [
-    'button:has-text("Accept all")',
-    'button:has-text("Accept All")',
-    'button:has-text("I agree")',
-    '[data-testid="cookie-banner"] button',
-    'button[aria-label="Close"]',
-  ];
-  for (const selector of dismissers) {
-    const locator = page.locator(selector).first();
-    if (await locator.isVisible().catch(() => false)) {
-      await locator.click({ timeout: 3_000 }).catch(() => undefined);
-    }
+  const locator = page.locator(DISMISSERS).first();
+  if (await locator.isVisible().catch(() => false)) {
+    await locator.click({ timeout: 3_000 }).catch(() => undefined);
   }
 }
 
