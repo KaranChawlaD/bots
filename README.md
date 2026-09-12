@@ -61,6 +61,22 @@ npm run kijiji -- history           # what each account has already messaged
 Add `--viewer` to any command to print the Steel session viewer URL and watch the
 agent work live.
 
+## Control panel
+
+```bash
+npm run ui           # http://127.0.0.1:5173
+```
+
+The same commands with a browser in front of them: pick which agents run, search,
+open a listing, draft offers, write a message, fill the ad form, and read the send
+history. Agent logs stream into the page as the job runs, and anything the
+terminal would ask for — a mailed sign-in code, approval before a message or an
+ad goes out — appears as a prompt in the page instead.
+
+One job runs at a time, since each one opens cloud browsers you pay for. The
+server binds to localhost and has no authentication: it drives your accounts, so
+don't expose it (`HOST`/`PORT` override the bind address).
+
 ## How sends are gated
 
 Messaging is deliberately one-at-a-time, not a broadcast:
@@ -118,6 +134,8 @@ extras, so they are off unless you ask: set `"useProxy": true` (or a residential
 ```
 src/
   cli.ts              commands and argument handling
+  ui/server.ts        control panel HTTP API, serving web/
+  ui/jobs.ts          job queue, log capture, in-page prompts
   config.ts           accounts.json + .env loading
   safety.ts           rate limits, send history, approval prompt
   agents/pool.ts      runs one agent per account with a concurrency ceiling

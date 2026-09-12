@@ -10,7 +10,8 @@
   "scripts": {
     "kijiji": "tsx src/cli.ts",
     "build": "tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ui": "tsx src/ui/server.ts"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
