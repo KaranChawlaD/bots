@@ -7,10 +7,19 @@ async function api(path, options) {
     headers: { "content-type": "application/json" },
     ...options,
   });
+  if (response.status === 401) {
+    location.href = "/login";
+    throw new Error("signed out");
+  }
   const body = await response.json();
   if (!response.ok) throw new Error(body.error ?? response.statusText);
   return body;
 }
+
+el("logout").addEventListener("click", async () => {
+  await fetch("/api/logout", { method: "POST" });
+  location.href = "/login";
+});
 
 function selectedAccounts() {
   return Array.from(document.querySelectorAll("#agents input:checked")).map((box) => box.value);

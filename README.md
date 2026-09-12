@@ -73,9 +73,19 @@ history. Agent logs stream into the page as the job runs, and anything the
 terminal would ask for — a mailed sign-in code, approval before a message or an
 ad goes out — appears as a prompt in the page instead.
 
-One job runs at a time, since each one opens cloud browsers you pay for. The
-server binds to localhost and has no authentication: it drives your accounts, so
-don't expose it (`HOST`/`PORT` override the bind address).
+One job runs at a time, since each one opens cloud browsers you pay for.
+
+**Password.** The panel asks for `UI_PASSWORD` from `.env` and refuses to start
+without it. Signing in sets a cookie signed with a key generated at startup, so
+restarting the server signs every browser out, and wrong guesses lock out for a
+minute after five tries.
+
+**Reaching it from elsewhere.** It listens on `127.0.0.1:5173`; `HOST=0.0.0.0`
+opens it to your network, and any tunnel (`cloudflared tunnel --url
+http://localhost:5173`, `ngrok http 5173`) gives it a public HTTPS address. The
+cookie is not marked `Secure`, so anything past your own LAN should go through a
+tunnel or a reverse proxy that terminates TLS — the panel drives real accounts
+and the password is all that stands in front of it.
 
 ## How sends are gated
 

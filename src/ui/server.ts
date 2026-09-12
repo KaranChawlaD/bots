@@ -15,9 +15,13 @@ import { sendMessage } from "../kijiji/messages.js";
 import { postListing, validateDraft, type ListingDraft } from "../kijiji/post.js";
 import { sendHistory } from "../safety.js";
 import { answerJob, getJob, listJobs, startJob } from "./jobs.js";
+import { isAuthed, login, logout, uiPassword } from "./auth.js";
 
 const log = logger("ui");
 const webRoot = resolve(projectRoot, "web");
+
+/** Reachable without a session: the login page and what it needs to render. */
+const publicPaths = new Set(["/login", "/login.html", "/styles.css", "/api/login"]);
 
 const mimeTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -299,6 +303,34 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const url = new URL(req.url ?? "/", "http://localhost");
   const path = url.pathname;
 
+  if (req.method === "POST" && path === "/api/login") {
+    const body = await readBody(req);
+    const attempt = login(res, body.password);
+    if (attempt.ok) sendJson(res, 200, { ok: true });
+    else if (attempt.retryAfter) sendJson(res, 429, { error: `too many attempts — wait ${attempt.retryAfter}s` });
+    else sendJson(res, 401, { error: "wrong password" });
+    return;
+  }
+  if (req.method === "POST" && path === "/api/logout") {
+    logout(res);
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (!publicPaths.has(path) && !isAuthed(req)) {
+    if (path.startsWith("/api/")) {
+      sendJson(res, 401, { error: "sign in" });
+      return;
+    }
+    res.writeHead(302, { location: "/login" });
+    res.end();
+    return;
+  }
+  if (req.method === "GET" && path === "/login") {
+    await serveStatic(isAuthed(req) ? "/" : "/login.html", res);
+    return;
+  }
+
   if (req.method === "GET" && path === "/api/state") {
     sendJson(res, 200, state());
     return;
@@ -346,11 +378,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 const port = Number(process.env.PORT ?? 5173);
 const host = process.env.HOST ?? "127.0.0.1";
 
+uiPassword();
+
 createServer((req, res) => {
   handle(req, res).catch((error: unknown) => {
     log.error(describe(error));
     if (!res.headersSent) sendJson(res, 500, { error: describe(error) });
   });
 }).listen(port, host, () => {
-  log.info(`control panel on http://${host}:${port}`);
+  log.info(`control panel on http://${host}:${port} — password required`);
 });

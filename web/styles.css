@@ -264,3 +264,51 @@ a {
   color: var(--accent);
   overflow-wrap: anywhere;
 }
+
+header {
+  position: relative;
+}
+
+button.link {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+button.link:hover {
+  color: var(--text);
+}
+
+body.login-page {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+
+.login-card {
+  width: min(320px, 90vw);
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.login-card label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.login-error {
+  margin: 0;
+  color: var(--bad);
+}

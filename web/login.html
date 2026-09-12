@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>kijiji agents — sign in</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="login-page">
+    <form id="login" class="login-card">
+      <h1>kijiji agents</h1>
+      <label>
+        Password
+        <input name="password" type="password" autocomplete="current-password" autofocus />
+      </label>
+      <button type="submit">Sign in</button>
+      <p id="error" class="login-error" hidden></p>
+    </form>
+    <script>
+      const form = document.getElementById("login");
+      const error = document.getElementById("error");
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        error.hidden = true;
+        const password = new FormData(form).get("password");
+        const res = await fetch("/api/login", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ password }),
+        });
+        if (res.ok) {
+          location.href = "/";
+          return;
+        }
+        const body = await res.json().catch(() => ({}));
+        error.textContent = body.error ?? "sign in failed";
+        error.hidden = false;
+        form.reset();
+      });
+    </script>
+  </body>
+</html>
