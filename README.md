@@ -75,10 +75,12 @@ ad goes out — appears as a prompt in the page instead.
 
 One job runs at a time, since each one opens cloud browsers you pay for.
 
-**Password.** The panel asks for `UI_PASSWORD` from `.env` and refuses to start
-without it. Signing in sets a cookie signed with a key generated at startup, so
-restarting the server signs every browser out, and wrong guesses lock out for a
-minute after five tries.
+**Password.** Set `UI_PASSWORD` in `.env` and the panel asks for it. Signing in
+sets a cookie signed with a key generated at startup, so restarting the server
+signs every browser out, and wrong guesses lock out for a minute after five
+tries. Leave `UI_PASSWORD` empty and there is no sign-in at all — fine on
+localhost, but never with `HOST` or a tunnel, since whoever reaches the port can
+message and post from your accounts.
 
 **Reaching it from elsewhere.** It listens on `127.0.0.1:5173`; `HOST=0.0.0.0`
 opens it to your network, and any tunnel (`cloudflared tunnel --url

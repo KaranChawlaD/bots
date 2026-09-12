@@ -9,14 +9,13 @@ const sessionMaxAgeMs = 12 * 60 * 60 * 1000;
 /** Slows down guessing without keeping per-client state. */
 const attempts = { failures: 0, blockedUntil: 0 };
 
-export function uiPassword(): string {
-  const password = process.env.UI_PASSWORD?.trim();
-  if (!password) {
-    throw new Error(
-      "Set UI_PASSWORD in .env before starting the control panel — it drives real accounts.",
-    );
-  }
-  return password;
+/** Unset UI_PASSWORD leaves the panel open, for running it on localhost only. */
+export function uiPassword(): string | undefined {
+  return process.env.UI_PASSWORD?.trim() || undefined;
+}
+
+export function passwordRequired(): boolean {
+  return uiPassword() !== undefined;
 }
 
 function sameString(a: string, b: string): boolean {
@@ -53,6 +52,7 @@ function cookies(req: IncomingMessage): Record<string, string> {
 }
 
 export function isAuthed(req: IncomingMessage): boolean {
+  if (!passwordRequired()) return true;
   const token = cookies(req)[COOKIE];
   return Boolean(token && tokenValid(token));
 }
@@ -62,11 +62,13 @@ export function isAuthed(req: IncomingMessage): boolean {
  * seconds to wait when too many wrong guesses have come in.
  */
 export function login(res: ServerResponse, password: unknown): { ok: boolean; retryAfter?: number } {
+  const expected = uiPassword();
+  if (!expected) return { ok: true };
   const now = Date.now();
   if (now < attempts.blockedUntil) {
     return { ok: false, retryAfter: Math.ceil((attempts.blockedUntil - now) / 1000) };
   }
-  if (typeof password !== "string" || !sameString(password, uiPassword())) {
+  if (typeof password !== "string" || !sameString(password, expected)) {
     attempts.failures += 1;
     if (attempts.failures >= 5) {
       attempts.blockedUntil = now + 60_000;
