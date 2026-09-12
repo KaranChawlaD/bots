@@ -13,7 +13,8 @@
       "email": "you+sell@example.com",
       "passwordEnv": "KIJIJI_PASSWORD_SECONDARY",
       "totpSecretEnv": "KIJIJI_TOTP_SECONDARY",
-      "label": "Selling account"
+      "label": "Selling account",
+      "style": { "casing": "lower", "length": "brief", "slang": true, "emoticons": false }
     }
   ],
   "limits": {

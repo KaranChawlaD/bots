@@ -185,7 +185,13 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
           if (priceMatch && comparables.length === 0) {
             log.warn("  no cheaper comparable listings found — offering off the ask instead");
           }
-          const offer = draftOffer(listing, { ...input, priceMatch, comparables, variant: index });
+          const offer = draftOffer(listing, {
+            ...input,
+            priceMatch,
+            comparables,
+            variant: index,
+            ...(account.style ? { style: account.style } : {}),
+          });
           log.info(
             `  asking ${listing.priceText || "—"} → offering $${offer.amount}` +
               `${comparables.length > 0 ? `, citing ${comparables.length} cheaper listing(s)` : ""}`,

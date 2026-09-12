@@ -101,6 +101,19 @@ Offers are priced per listing from that listing's live asking price (`--percent`
 with `--floor`/`--ceiling` bounds) or pinned with `--amount`, and rotate between
 wording variants so they don't read as a copy-paste blast.
 
+An account can also carry a `style` in `accounts.json`, so its drafts read the
+way that account's owner actually types rather than like a form letter:
+
+```json
+"style": { "casing": "lower", "length": "brief", "slang": true, "emoticons": false }
+```
+
+`casing: "lower"` drops everything to lowercase, `length: "brief"` keeps the
+sentence with the offer in it, `slang` swaps a few openers and sign-offs, and
+`emoticons` adds a closing `:)`. Quoted comparable listings are left alone —
+lowercasing a URL breaks it. Style only changes wording; it is not a persona,
+and every message still goes out from the account of the person it belongs to.
+
 ## Price matching
 
 `--price-match` has the agent search Kijiji for the same item, keep the listings

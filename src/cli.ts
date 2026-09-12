@@ -277,7 +277,13 @@ async function commandOffer(
         if (priceMatch && comparables.length === 0) {
           log.warn("  no cheaper comparable listings found — offering off the ask instead");
         }
-        const offer = draftOffer(listing, { ...input, priceMatch, comparables, variant: index });
+        const offer = draftOffer(listing, {
+          ...input,
+          priceMatch,
+          comparables,
+          variant: index,
+          ...(account.style ? { style: account.style } : {}),
+        });
         process.stdout.write(
           `  asking ${listing.priceText || "—"} → offering $${offer.amount}` +
             `${offer.discountPercent !== undefined ? ` (${offer.discountPercent}% under)` : ""}` +
@@ -323,10 +329,17 @@ function commandPlanOffers(settings: Settings, args: ParsedArgs): number {
     try {
       // Offline, the other listings in the same search are the comparables.
       const comparables = priceMatch ? pickComparables(listings, listing, comps) : [];
+      const account = accounts[index % accounts.length]!;
       tasks.push({
-        account: accounts[index % accounts.length]!.id,
+        account: account.id,
         listing: listing.url,
-        message: draftOffer(listing, { ...input, priceMatch, comparables, variant: index }).message,
+        message: draftOffer(listing, {
+          ...input,
+          priceMatch,
+          comparables,
+          variant: index,
+          ...(account.style ? { style: account.style } : {}),
+        }).message,
       });
     } catch (error) {
       log.warn(`skipping "${listing.title}": ${describe(error)}`);

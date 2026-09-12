@@ -7,6 +7,21 @@ export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), ".."
 
 dotenv.config({ path: resolve(projectRoot, ".env"), quiet: true });
 
+/**
+ * How this account's owner writes, so drafts read the way they would have
+ * typed them instead of like one template sent four times.
+ */
+export interface AccountStyle {
+  /** "lower" types everything in lowercase. */
+  casing?: "lower" | "asWritten";
+  /** Closes with an emoticon. */
+  emoticons?: boolean;
+  /** Swaps a few openers and sign-offs for casual ones. */
+  slang?: boolean;
+  /** "brief" keeps the offer and drops the pleasantries. */
+  length?: "brief" | "full";
+}
+
 export interface Account {
   /** Short handle used on the command line, e.g. "primary". */
   id: string;
@@ -25,6 +40,7 @@ export interface Account {
   /** Route through Steel's own proxies (billed extra; off unless set). */
   useProxy?: boolean;
   userAgent?: string;
+  style?: AccountStyle;
 }
 
 export interface Limits {
