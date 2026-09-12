@@ -16,6 +16,18 @@ export const selectors = {
     'button:has-text("Log in")',
   ],
   totpField: ['input[name="code"]', 'input[autocomplete="one-time-code"]', 'input[name="otp"]'],
+  /** Kijiji's own step: it mails a code instead of using an authenticator app. */
+  emailCodeRequest: [
+    'form#fm1 button:has-text("Send Code")',
+    'button:has-text("Send Code")',
+    'button:has-text("Send code")',
+  ],
+  emailCodeField: [
+    'input[autocomplete="one-time-code"]',
+    'input[name="code"]',
+    'input[name="otpCode"]',
+    'input[inputmode="numeric"]',
+  ],
   loggedInMarker: [
     '[data-testid="header-avatar"]',
     '[data-testid="header-my-account"]',

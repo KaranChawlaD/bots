@@ -22,6 +22,10 @@ from environment variables named in `accounts.json` (`passwordEnv`), never store
 in the config file itself. Accounts with an authenticator app set `totpSecretEnv`
 and codes are generated locally.
 
+Kijiji often interrupts sign-in with a code mailed to the account. Run `login`
+from a terminal and paste the code when prompted; the saved profile is then
+reused until it expires. For unattended runs set `KIJIJI_EMAIL_CODE` instead.
+
 ## Commands
 
 ```bash

@@ -79,6 +79,19 @@ export function checkSendLimits(
   return { allowed: true };
 }
 
+/** Read a one-off value (a verification code) from the terminal. */
+export async function ask(question: string): Promise<string> {
+  if (!process.stdin.isTTY) {
+    throw new Error(`${question} — but stdin is not a terminal. Re-run interactively.`);
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return (await rl.question(`${question} `)).trim();
+  } finally {
+    rl.close();
+  }
+}
+
 /** Ask on the terminal before a message actually goes out. */
 export async function confirm(question: string): Promise<boolean> {
   if (!process.stdin.isTTY) {

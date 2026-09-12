@@ -1,6 +1,7 @@
 import type { Agent } from "../steel/agent.js";
 import { accountPassword } from "../config.js";
 import { logger } from "../log.js";
+import { ask } from "../safety.js";
 import { dismissOverlays, findFirst, open, requireFirst, typeSlowly } from "./page-utils.js";
 import { totpCode } from "./totp.js";
 import { KIJIJI_BASE, LOGIN_URL } from "./urls.js";
@@ -38,6 +39,7 @@ export async function ensureLoggedIn(agent: Agent): Promise<void> {
   await (await requireFirst(page, "submitLogin")).click();
   await page.waitForLoadState("domcontentloaded").catch(() => undefined);
 
+  await handleEmailVerification(agent);
   await handleTwoFactor(agent);
 
   if (!(await isLoggedIn(agent))) {
@@ -48,6 +50,31 @@ export async function ensureLoggedIn(agent: Agent): Promise<void> {
   }
   await agent.persistProfile();
   log.info(`[${account.id}] signed in, profile saved`);
+}
+
+/**
+ * Kijiji interrupts sign-in with a code mailed to the account, which no stored
+ * secret can produce: request it, then wait for whoever is running the command
+ * to read their inbox. `KIJIJI_EMAIL_CODE` skips the prompt for unattended runs.
+ */
+async function handleEmailVerification(agent: Agent): Promise<void> {
+  const { page, account } = agent;
+  const request = await findFirst(page, "emailCodeRequest", 8_000);
+  if (!request) return;
+
+  log.info(`[${account.id}] Kijiji wants an emailed verification code — requesting one`);
+  await request.click();
+  const field = await requireFirst(page, "emailCodeField", 30_000);
+
+  const code =
+    process.env.KIJIJI_EMAIL_CODE ??
+    (await ask(`[${account.id}] Enter the code Kijiji emailed to ${account.email}:`));
+  if (!code) throw new Error(`[${account.id}] no verification code given.`);
+
+  await typeSlowly(field, code);
+  const submit = await findFirst(page, "submitLogin", 5_000);
+  if (submit) await submit.click();
+  await page.waitForLoadState("domcontentloaded").catch(() => undefined);
 }
 
 async function handleTwoFactor(agent: Agent): Promise<void> {
