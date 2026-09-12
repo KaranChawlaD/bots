@@ -60,17 +60,38 @@ export async function ensureLoggedIn(agent: Agent): Promise<void> {
   await (await requireFirst(page, "submitLogin")).click();
   await page.waitForLoadState("domcontentloaded").catch(() => undefined);
 
+  // A complaint at this point is about the credentials themselves, so stop
+  // before burning an emailed code on a login that cannot succeed.
+  const refusal = await loginComplaint(agent);
+  if (refusal && !(await isLoggedIn(agent))) {
+    throw new Error(`[${account.id}] Kijiji rejected the credentials: "${refusal}"`);
+  }
+
   await handleEmailVerification(agent);
   await handleTwoFactor(agent);
 
+  // Read it before isLoggedIn, which may navigate the page out from under it.
+  const complaint = await loginComplaint(agent);
   if (!(await isLoggedIn(agent))) {
     throw new Error(
       `[${account.id}] sign-in did not complete (now at ${page.url()}). ` +
-        `Run with --viewer and watch the Steel session to see what Kijiji asked for.`,
+        (complaint
+          ? `Kijiji says: "${complaint}"`
+          : `Run with --viewer and watch the Steel session to see what Kijiji asked for.`),
     );
   }
   await agent.persistProfile();
   log.info(`[${account.id}] signed in, profile saved`);
+}
+
+/** The message Kijiji leaves on the page when it turns a sign-in away. */
+async function loginComplaint(agent: Agent): Promise<string | undefined> {
+  const element = await findFirst(agent.page, "loginError", 2_000);
+  if (!element) return undefined;
+  const text = (await element.innerText().catch(() => ""))
+    .replace(/\s+/g, " ")
+    .trim();
+  return text || undefined;
 }
 
 /**
@@ -85,7 +106,14 @@ async function handleEmailVerification(agent: Agent): Promise<void> {
 
   log.info(`[${account.id}] Kijiji wants an emailed verification code — requesting one`);
   await request.click();
-  const field = await requireFirst(page, "emailCodeField", 30_000);
+  const field = await findFirst(page, "emailCodeField", 30_000);
+  if (!field) {
+    const complaint = await loginComplaint(agent);
+    throw new Error(
+      `[${account.id}] Kijiji did not show the code field after asking for a code` +
+        (complaint ? `: "${complaint}"` : ` (it may be refusing further codes for now).`),
+    );
+  }
 
   const code =
     process.env.KIJIJI_EMAIL_CODE ??
