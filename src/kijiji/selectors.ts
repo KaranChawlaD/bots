@@ -124,7 +124,12 @@ export const selectors = {
     'input[data-testid="location-input"]',
     'input[placeholder*="postal code" i]',
   ],
-  postLocationSuggestion: ['ul[role="listbox"] li', '[data-testid="location-suggestion"]'],
+  postLocationSuggestion: [
+    'div[id^="LocationSelector-item"]',
+    '[role="option"]',
+    'ul[role="listbox"] li',
+    '[data-testid="location-suggestion"]',
+  ],
   postPhotoInput: ['input[type="file"]'],
   postContinueButton: [
     'button[aria-controls="CategorySuggestion"]',

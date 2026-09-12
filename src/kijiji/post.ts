@@ -128,8 +128,10 @@ export async function postListing(
   await page.waitForLoadState("domcontentloaded").catch(() => undefined);
   const confirmed = await findFirst(page, "postSuccessMarker", 30_000);
   if (!confirmed) {
+    const complaints = await formComplaints(page);
     throw new Error(
       `[${agent.account.id}] no confirmation after submitting "${draft.title}" (now at ${page.url()}). ` +
+        (complaints ? `Kijiji says: ${complaints}. ` : "") +
         `Check the account's My Ads page before retrying — it may have posted anyway.`,
     );
   }
@@ -253,6 +255,12 @@ async function ensureSiteLocation(agent: Agent, draft: ListingDraft): Promise<vo
   }
 }
 
+/**
+ * Kijiji only accepts a location picked from its own autocomplete — typing the
+ * postal code alone leaves the ad without coordinates and the form refuses to
+ * submit. A full postal code sometimes returns nothing, so shorter prefixes are
+ * tried until the menu opens.
+ */
 async function fillLocation(agent: Agent, location: string): Promise<void> {
   const { page } = agent;
   const field = await findFirst(page, "postLocationField", 8_000);
@@ -260,9 +268,56 @@ async function fillLocation(agent: Agent, location: string): Promise<void> {
     log.debug("location already set from the account profile");
     return;
   }
-  await typeSlowly(field, location);
-  const suggestion = await findFirst(page, "postLocationSuggestion", 6_000);
-  if (suggestion) await suggestion.click();
+  const wanted = location.toLowerCase().replace(/\s+/g, "");
+  const attempts = [location, location.replace(/\s+/g, ""), location.split(/\s+/)[0] ?? location];
+  for (const attempt of [...new Set(attempts)]) {
+    await field.click();
+    await field.fill("");
+    await field.pressSequentially(attempt, { delay: 120 });
+    const options = await locationOptions(agent);
+    if (options.length === 0) continue;
+    const exact = await firstMatching(options, wanted);
+    await (exact ?? options[0]!).click();
+    log.info(`[${agent.account.id}] location set from Kijiji's suggestions`);
+    return;
+  }
+  throw new Error(
+    `Kijiji suggested no location for "${location}" — use a postal code or city it recognises.`,
+  );
+}
+
+async function locationOptions(agent: Agent): Promise<Locator[]> {
+  const { page } = agent;
+  if (!(await findFirst(page, "postLocationSuggestion", 6_000))) return [];
+  for (const selector of selectors.postLocationSuggestion) {
+    const found = await page.locator(selector).all();
+    if (found.length > 0) return found;
+  }
+  return [];
+}
+
+async function firstMatching(options: Locator[], wanted: string): Promise<Locator | undefined> {
+  for (const option of options) {
+    const label = (await option.innerText().catch(() => "")).toLowerCase().replace(/\s+/g, "");
+    if (label.includes(wanted)) return option;
+  }
+  return undefined;
+}
+
+/** Whatever the form is complaining about, so a rejected submit says why. */
+async function formComplaints(page: Agent["page"]): Promise<string> {
+  const messages = await page
+    .evaluate(() => {
+      const texts = Array.from(document.querySelectorAll('[role="alert"], [class*="error" i]'))
+        .map((el) => (el.textContent ?? "").replace(/\s+/g, " ").trim())
+        .filter((text) => text.length > 0 && text.length < 160);
+      const fields = Array.from(document.querySelectorAll("[aria-invalid='true']")).map(
+        (el) => `field "${el.id || el.getAttribute("name") || el.tagName}" is rejected`,
+      );
+      return Array.from(new Set([...texts, ...fields]));
+    })
+    .catch(() => [] as string[]);
+  return messages.slice(0, 5).join("; ");
 }
 
 async function attachPhotos(agent: Agent, photos: string[]): Promise<void> {
