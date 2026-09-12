@@ -4,6 +4,16 @@ export interface ParsedArgs {
   flags: Map<string, string | true>;
 }
 
+/** Flags that never take a value, so they don't swallow the next positional. */
+const booleanFlags = new Set([
+  "yes",
+  "dry-run",
+  "viewer",
+  "json",
+  "help",
+  "price-match",
+]);
+
 export function parseArgs(argv: string[]): ParsedArgs {
   const [command = "help", ...rest] = argv;
   const positionals: string[] = [];
@@ -21,7 +31,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
     const next = rest[index + 1];
-    if (next && !next.startsWith("--")) {
+    if (next && !next.startsWith("--") && !booleanFlags.has(name)) {
       flags.set(name, next);
       index += 1;
     } else {

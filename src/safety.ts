@@ -2,10 +2,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { projectRoot, type Limits } from "./config.js";
+import { listingIdFromUrl } from "./kijiji/urls.js";
 
 export interface SendRecord {
   accountId: string;
   listingUrl: string;
+  /** Kijiji ad id, so the same listing reached by a different URL still counts. */
+  listingId?: string;
   sentAt: string;
   preview: string;
 }
@@ -29,8 +32,12 @@ export function recordSend(record: SendRecord): void {
 }
 
 export function alreadyMessaged(accountId: string, listingUrl: string): SendRecord | undefined {
+  const id = listingIdFromUrl(listingUrl);
   return sendHistory().find(
-    (record) => record.accountId === accountId && record.listingUrl === listingUrl,
+    (record) =>
+      record.accountId === accountId &&
+      (record.listingUrl === listingUrl ||
+        (id !== undefined && (record.listingId ?? listingIdFromUrl(record.listingUrl)) === id)),
   );
 }
 
@@ -70,6 +77,19 @@ export function checkSendLimits(
     if (elapsed < required) return { allowed: true, waitMs: required - elapsed };
   }
   return { allowed: true };
+}
+
+/** Read a one-off value (a verification code) from the terminal. */
+export async function ask(question: string): Promise<string> {
+  if (!process.stdin.isTTY) {
+    throw new Error(`${question} — but stdin is not a terminal. Re-run interactively.`);
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return (await rl.question(`${question} `)).trim();
+  } finally {
+    rl.close();
+  }
 }
 
 /** Ask on the terminal before a message actually goes out. */

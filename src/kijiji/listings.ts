@@ -1,14 +1,9 @@
 import type { Page } from "playwright-core";
 import type { Agent } from "../steel/agent.js";
 import { logger } from "../log.js";
-import { dismissOverlays, findFirst, requireFirst, textOf, typeSlowly } from "./page-utils.js";
-import {
-  KIJIJI_BASE,
-  listingIdFromUrl,
-  listingUrl,
-  refineSearchUrl,
-  type SearchQuery,
-} from "./urls.js";
+import { dismissOverlays, findFirst, open, textOf } from "./page-utils.js";
+import { selectors } from "./selectors.js";
+import { listingIdFromUrl, listingUrl, searchUrl, type SearchQuery } from "./urls.js";
 
 const log = logger("listings");
 
@@ -29,35 +24,26 @@ export interface ListingDetail extends ListingSummary {
   viewedAt: string;
 }
 
+const MAX_SEARCH_PAGES = 20;
+
 export async function search(agent: Agent, query: SearchQuery): Promise<ListingSummary[]> {
   const { page } = agent;
   const limit = query.limit ?? 25;
-
-  await page.goto(KIJIJI_BASE, { waitUntil: "domcontentloaded" });
-  await dismissOverlays(page);
-  await typeSlowly(await requireFirst(page, "searchKeywordInput", 20_000), query.keywords);
-  const submit = await findFirst(page, "searchSubmit", 5_000);
-  if (submit) await submit.click();
-  else await page.keyboard.press("Enter");
-  await page.waitForLoadState("domcontentloaded");
-
-  await page.goto(refineSearchUrl(page.url(), query), { waitUntil: "domcontentloaded" });
-  await dismissOverlays(page);
-
   const results: ListingSummary[] = [];
   const seen = new Set<string>();
-  while (results.length < limit) {
-    for (const listing of await scrapeResultPage(page)) {
+
+  for (let pageNumber = 1; pageNumber <= MAX_SEARCH_PAGES; pageNumber += 1) {
+    await open(page, searchUrl(query, pageNumber));
+    await dismissOverlays(page);
+    const cards = await scrapeResultPage(page);
+    if (cards.length === 0) break;
+    for (const listing of cards) {
       if (seen.has(listing.url)) continue;
       seen.add(listing.url);
       results.push(listing);
       if (results.length >= limit) break;
     }
     if (results.length >= limit) break;
-    const next = await findFirst(page, "nextPageLink", 3_000);
-    if (!next) break;
-    await next.click();
-    await page.waitForLoadState("domcontentloaded");
   }
 
   log.info(`[${agent.account.id}] "${query.keywords}" → ${results.length} listings`);
@@ -65,35 +51,34 @@ export async function search(agent: Agent, query: SearchQuery): Promise<ListingS
 }
 
 async function scrapeResultPage(page: Page): Promise<ListingSummary[]> {
-  await findFirst(page, "searchResultCard", 15_000);
-  const raw = await page.evaluate(() => {
-    const cardSelectors = [
-      '[data-testid="listing-card"]',
-      "[data-listing-id]",
-      'section[data-testid="srp-search-list"] li',
-      "div.search-item",
-    ];
+  if (!(await findFirst(page, "searchResultCard", 15_000))) return [];
+  // Everything inside evaluate() stays anonymous and inline: named helpers get
+  // rewritten to reference a bundler shim that doesn't exist in the browser.
+  const raw = await page.evaluate((cardSelectors: readonly string[]) => {
     const cards = cardSelectors
       .map((selector) => Array.from(document.querySelectorAll(selector)))
       .find((found) => found.length > 0);
-    const text = (root: Element, selectors: string[]): string => {
-      for (const selector of selectors) {
-        const node = root.querySelector(selector);
-        if (node?.textContent?.trim()) return node.textContent.trim();
-      }
-      return "";
-    };
-    return (cards ?? []).map((card) => {
-      const link = card.querySelector<HTMLAnchorElement>('a[href*="/v-"], a[href*="adId="]');
-      return {
-        href: link?.href ?? "",
-        title: text(card, ['[data-testid="listing-title"]', "h3", "h2", "a[title]"]),
-        priceText: text(card, ['[data-testid="listing-price"]', ".price", '[class*="price"]']),
-        location: text(card, ['[data-testid="listing-location"]', '[class*="location"]']),
-        postedAt: text(card, ['[data-testid="listing-date"]', "time", '[class*="date"]']),
-      };
-    });
-  });
+    return (cards ?? []).map((card) => ({
+      href:
+        card.querySelector<HTMLAnchorElement>('a[href*="/v-"], a[href*="adId="]')?.href ?? "",
+      title:
+        ['[data-testid="listing-title"]', "h3", "h2", "a[title]"]
+          .map((selector) => card.querySelector(selector)?.textContent?.trim() ?? "")
+          .find((value) => value) ?? "",
+      priceText:
+        ['[data-testid="listing-price"]', ".price", '[class*="price"]']
+          .map((selector) => card.querySelector(selector)?.textContent?.trim() ?? "")
+          .find((value) => value) ?? "",
+      location:
+        ['[data-testid="listing-location"]', '[class*="location"]']
+          .map((selector) => card.querySelector(selector)?.textContent?.trim() ?? "")
+          .find((value) => value) ?? "",
+      postedAt:
+        ['[data-testid="listing-date"]', "time", '[class*="date"]']
+          .map((selector) => card.querySelector(selector)?.textContent?.trim() ?? "")
+          .find((value) => value) ?? "",
+    }));
+  }, selectors.searchResultCard);
 
   return raw
     .filter((card) => card.href && card.title)
@@ -108,22 +93,74 @@ async function scrapeResultPage(page: Page): Promise<ListingSummary[]> {
     }));
 }
 
+interface ProductLd {
+  "@type"?: string;
+  name?: string;
+  description?: string;
+  offers?: {
+    price?: string | number;
+    priceCurrency?: string;
+    availableAtOrFrom?: { name?: string; address?: { streetAddress?: string } };
+  };
+}
+
+function isProductLd(value: unknown): value is ProductLd {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { "@type"?: unknown })["@type"] === "Product"
+  );
+}
+
+/**
+ * Listing pages embed schema.org Product JSON-LD, which survives markup
+ * churn better than the rendered DOM. Falls back to selectors per field.
+ */
+async function structuredListing(page: Page): Promise<ProductLd | undefined> {
+  const blocks = await page
+    .locator('script[type="application/ld+json"]')
+    .allTextContents()
+    .catch(() => [] as string[]);
+  for (const block of blocks) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(block);
+    } catch {
+      continue;
+    }
+    const candidates = Array.isArray(parsed) ? parsed : [parsed];
+    const product = candidates.find(isProductLd);
+    if (product) return product;
+  }
+  return undefined;
+}
+
 export async function view(agent: Agent, idOrUrl: string): Promise<ListingDetail> {
   const { page } = agent;
   const url = listingUrl(idOrUrl);
-  await page.goto(url, { waitUntil: "domcontentloaded" });
+  await open(page, url);
   await dismissOverlays(page);
 
-  const priceText = await textOf(page, "listingPrice");
+  const product = await structuredListing(page);
+  const offer = product?.offers;
+  const structuredPrice = offer?.price === undefined ? undefined : Number(offer.price);
+  const place = offer?.availableAtOrFrom;
+
+  const priceText = (await textOf(page, "listingPrice")) || formatPrice(structuredPrice);
+  const price = parsePrice(priceText) ?? structuredPrice;
   const detail: ListingDetail = {
     ...(listingIdFromUrl(page.url()) ? { id: listingIdFromUrl(page.url()) } : {}),
-    title: await textOf(page, "listingTitle", 15_000),
-    ...(parsePrice(priceText) !== undefined ? { price: parsePrice(priceText) } : {}),
+    title: (await textOf(page, "listingTitle", 15_000)) || (product?.name ?? "").trim(),
+    ...(price !== undefined && Number.isFinite(price) ? { price } : {}),
     priceText,
-    location: await textOf(page, "listingLocation"),
+    location:
+      (await textOf(page, "listingLocation")) ||
+      place?.address?.streetAddress ||
+      place?.name ||
+      "",
     url: page.url(),
     postedAt: "",
-    description: await textOf(page, "listingDescription"),
+    description: (await textOf(page, "listingDescription")) || (product?.description ?? ""),
     seller: await textOf(page, "listingSeller"),
     viewedBy: agent.account.id,
     viewedAt: new Date().toISOString(),
@@ -133,6 +170,11 @@ export async function view(agent: Agent, idOrUrl: string): Promise<ListingDetail
   }
   log.info(`[${agent.account.id}] viewed "${detail.title}" (${detail.priceText || "no price"})`);
   return detail;
+}
+
+function formatPrice(price: number | undefined): string {
+  if (price === undefined || !Number.isFinite(price)) return "";
+  return `$${price.toFixed(2).replace(/\.00$/, "")}`;
 }
 
 export function parsePrice(text: string): number | undefined {

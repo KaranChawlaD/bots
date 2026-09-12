@@ -42,7 +42,7 @@ export async function sendMessage(
   await ensureLoggedIn(agent);
   const listing = await view(agent, url);
 
-  if (!options.autoApprove) {
+  if (!options.autoApprove && !options.dryRun) {
     const approved = await confirm(
       `\nSend from "${agent.account.id}" to seller of "${listing.title}" (${listing.priceText}):\n` +
         `${body}\n\nSend it?`,
@@ -51,13 +51,28 @@ export async function sendMessage(
   }
 
   const { page } = agent;
-  const opener = await findFirst(page, "messageOpenButton", 10_000);
-  if (opener) {
-    await opener.click();
-    await dismissOverlays(page);
+  let field = await findFirst(page, "messageField", 5_000);
+  if (!field) {
+    // On a collapsed contact box the only control is the form's own submit,
+    // which expands it. Safe to click only because there is no text box yet,
+    // so there is nothing it could send.
+    const opener =
+      (await findFirst(page, "messageOpenButton", 10_000)) ??
+      (await findFirst(page, "messageSendButton", 2_000));
+    if (opener) {
+      await opener.click();
+      await dismissOverlays(page);
+    }
+    field = await requireFirst(page, "messageField", 15_000);
   }
-  const field = await requireFirst(page, "messageField", 15_000);
   await typeSlowly(field, body);
+  const typed = await field.inputValue().catch(() => "");
+  if (typed.trim() !== body.trim()) {
+    throw new Error(
+      `[${agent.account.id}] the composer holds ${typed.length} of ${body.length} characters — ` +
+        `the message did not go in cleanly, so nothing was sent.`,
+    );
+  }
 
   if (options.dryRun) {
     log.warn(`[${agent.account.id}] dry run — message typed but not sent`);
@@ -78,6 +93,7 @@ export async function sendMessage(
   recordSend({
     accountId: agent.account.id,
     listingUrl: listing.url,
+    ...(listing.id ? { listingId: listing.id } : {}),
     sentAt: new Date().toISOString(),
     preview: body.slice(0, 120),
   });

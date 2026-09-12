@@ -5,7 +5,8 @@
       "email": "you@example.com",
       "passwordEnv": "KIJIJI_PASSWORD_PRIMARY",
       "label": "Main account",
-      "region": "ord"
+      "region": "ord",
+      "useProxy": false
     },
     {
       "id": "secondary",
