@@ -1,6 +1,21 @@
 import type { Locator, Page } from "playwright-core";
 import { selectors, type SelectorKey } from "./selectors.js";
 
+/**
+ * Navigate and fail loudly when Kijiji's edge blocks the browser's IP, which
+ * otherwise looks identical to "this search has no results".
+ */
+export async function open(page: Page, url: string): Promise<void> {
+  const response = await page.goto(url, { waitUntil: "domcontentloaded" });
+  const status = response?.status();
+  if (status === 429 || status === 403) {
+    throw new Error(
+      `Kijiji answered ${status} for ${url}: the browser's IP is blocked. ` +
+        `Give the account a residential "proxyUrl", or set "useProxy": true to use Steel's proxies.`,
+    );
+  }
+}
+
 /** First selector in the fallback list that resolves to a visible element. */
 export async function findFirst(
   page: Page,

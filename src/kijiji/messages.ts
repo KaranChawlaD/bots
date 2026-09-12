@@ -53,7 +53,12 @@ export async function sendMessage(
   const { page } = agent;
   let field = await findFirst(page, "messageField", 5_000);
   if (!field) {
-    const opener = await findFirst(page, "messageOpenButton", 10_000);
+    // On a collapsed contact box the only control is the form's own submit,
+    // which expands it. Safe to click only because there is no text box yet,
+    // so there is nothing it could send.
+    const opener =
+      (await findFirst(page, "messageOpenButton", 10_000)) ??
+      (await findFirst(page, "messageSendButton", 2_000));
     if (opener) {
       await opener.click();
       await dismissOverlays(page);

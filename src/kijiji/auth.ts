@@ -1,7 +1,7 @@
 import type { Agent } from "../steel/agent.js";
 import { accountPassword } from "../config.js";
 import { logger } from "../log.js";
-import { dismissOverlays, findFirst, requireFirst, typeSlowly } from "./page-utils.js";
+import { dismissOverlays, findFirst, open, requireFirst, typeSlowly } from "./page-utils.js";
 import { totpCode } from "./totp.js";
 import { KIJIJI_BASE, LOGIN_URL } from "./urls.js";
 
@@ -10,7 +10,7 @@ const log = logger("auth");
 export async function isLoggedIn(agent: Agent): Promise<boolean> {
   const { page } = agent;
   if (!page.url().startsWith(KIJIJI_BASE)) {
-    await page.goto(KIJIJI_BASE, { waitUntil: "domcontentloaded" });
+    await open(page, KIJIJI_BASE);
   }
   await dismissOverlays(page);
   if (await findFirst(page, "signedOutMarker", 5_000)) return false;
@@ -30,7 +30,7 @@ export async function ensureLoggedIn(agent: Agent): Promise<void> {
   const { page, account } = agent;
   log.info(`[${account.id}] signing in as ${account.email}`);
 
-  await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded" });
+  await open(page, LOGIN_URL);
   await dismissOverlays(page);
 
   await typeSlowly(await requireFirst(page, "emailField", 20_000), account.email);

@@ -31,6 +31,17 @@ export interface AgentOptions {
   saveProfileOnClose?: boolean;
 }
 
+function envFlag(name: string): boolean {
+  const value = process.env[name];
+  return value === "1" || value?.toLowerCase() === "true";
+}
+
+function proxyParams(account: Account): { proxyUrl: string } | { useProxy: true } | object {
+  if (account.proxyUrl) return { proxyUrl: account.proxyUrl };
+  if (account.useProxy ?? envFlag("STEEL_USE_PROXY")) return { useProxy: true };
+  return {};
+}
+
 /**
  * One browser agent bound to one Kijiji account: a Steel cloud browser plus a
  * Playwright page connected to it over CDP.
@@ -52,11 +63,13 @@ export class Agent {
 
     const session = await steel.sessions.create({
       timeout: options.timeoutMs ?? 15 * 60_000,
-      solveCaptcha: true,
       blockAds: true,
+      // Steel proxies and CAPTCHA solving are billed extras and are rejected
+      // outright on plans without a paid balance, so both are opt-in.
+      ...(envFlag("STEEL_SOLVE_CAPTCHA") ? { solveCaptcha: true } : {}),
       ...(profile ? { sessionContext: profile.context } : {}),
       ...(account.userAgent ? { userAgent: account.userAgent } : {}),
-      ...(account.proxyUrl ? { proxyUrl: account.proxyUrl } : { useProxy: true }),
+      ...proxyParams(account),
       ...(account.region ? { region: account.region } : {}),
     });
 

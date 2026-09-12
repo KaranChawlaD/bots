@@ -5,7 +5,7 @@ import type { Agent } from "../steel/agent.js";
 import { logger } from "../log.js";
 import { confirm } from "../safety.js";
 import { ensureLoggedIn } from "./auth.js";
-import { dismissOverlays, findFirst, requireFirst, typeSlowly } from "./page-utils.js";
+import { dismissOverlays, findFirst, open, requireFirst, typeSlowly } from "./page-utils.js";
 import { selectors } from "./selectors.js";
 import { KIJIJI_BASE } from "./urls.js";
 
@@ -71,7 +71,7 @@ export async function postListing(
   await ensureLoggedIn(agent);
 
   const { page } = agent;
-  await page.goto(POST_AD_URL, { waitUntil: "domcontentloaded" });
+  await open(page, POST_AD_URL);
   await dismissOverlays(page);
 
   await chooseCategory(agent, draft);

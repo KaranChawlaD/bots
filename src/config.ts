@@ -22,6 +22,8 @@ export interface Account {
   /** Steel proxy/region hints, applied per account so sessions stay consistent. */
   region?: string;
   proxyUrl?: string;
+  /** Route through Steel's own proxies (billed extra; off unless set). */
+  useProxy?: boolean;
   userAgent?: string;
 }
 

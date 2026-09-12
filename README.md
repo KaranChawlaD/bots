@@ -96,9 +96,18 @@ driven through Steel:
   search box.
 - **Listing details** are read from the page's schema.org JSON-LD first, with DOM
   selectors as the fallback, so a class rename doesn't blank out a listing.
-- **Sign-in, messaging and posting** are DOM-driven and can only be verified
-  against a signed-in account; treat those selectors as the first thing to check
-  when a run fails.
+- **Sign-in** starts at `/consumer/login`, which hands off to `id.kijiji.ca`.
+  Messaging and posting past that point can only be verified with a signed-in
+  account; treat those selectors as the first thing to check when a run fails.
+
+Search, listing details and the sign-in form have been run live against Kijiji
+through a Steel session.
+
+**Blocks.** Kijiji answers 429 from addresses it doesn't like, and cloud IPs get
+hit sooner than home ones — commands fail with that status rather than quietly
+reporting zero results. Steel's own proxies and CAPTCHA solving are billed
+extras, so they are off unless you ask: set `"useProxy": true` (or a residential
+`"proxyUrl"`) on the account, and `STEEL_SOLVE_CAPTCHA=true` in the environment.
 
 ## Layout
 

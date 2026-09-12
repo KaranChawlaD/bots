@@ -48,7 +48,12 @@ export const selectors = {
     '[data-testid="vip-description-wrapper"]',
     '[data-testid="vip-description"]',
   ],
-  listingSeller: ['[data-testid="vip-about-seller"] a[href*="/o-profile/"]', 'a[href*="/o-profile/"]'],
+  /** The heading link, not the avatar link above it, whose text is one initial. */
+  listingSeller: [
+    '[data-testid="vip-about-seller"] h3 a[href*="/o-profile/"]',
+    '[data-testid="vip-about-seller"] a[href*="/o-profile/"]:not(:has([data-testid="profile-avatar"]))',
+    'a[href*="/o-profile/"]',
+  ],
   listingLocation: ['[data-testid="vip-location"]', 'span[itemprop="address"]'],
   /** Only openers — never the composer's own "Send message" submit button. */
   messageOpenButton: [

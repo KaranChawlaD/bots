@@ -1,7 +1,7 @@
 import type { Page } from "playwright-core";
 import type { Agent } from "../steel/agent.js";
 import { logger } from "../log.js";
-import { dismissOverlays, findFirst, textOf } from "./page-utils.js";
+import { dismissOverlays, findFirst, open, textOf } from "./page-utils.js";
 import { selectors } from "./selectors.js";
 import { listingIdFromUrl, listingUrl, searchUrl, type SearchQuery } from "./urls.js";
 
@@ -33,7 +33,7 @@ export async function search(agent: Agent, query: SearchQuery): Promise<ListingS
   const seen = new Set<string>();
 
   for (let pageNumber = 1; pageNumber <= MAX_SEARCH_PAGES; pageNumber += 1) {
-    await page.goto(searchUrl(query, pageNumber), { waitUntil: "domcontentloaded" });
+    await open(page, searchUrl(query, pageNumber));
     await dismissOverlays(page);
     const cards = await scrapeResultPage(page);
     if (cards.length === 0) break;
@@ -52,27 +52,32 @@ export async function search(agent: Agent, query: SearchQuery): Promise<ListingS
 
 async function scrapeResultPage(page: Page): Promise<ListingSummary[]> {
   if (!(await findFirst(page, "searchResultCard", 15_000))) return [];
+  // Everything inside evaluate() stays anonymous and inline: named helpers get
+  // rewritten to reference a bundler shim that doesn't exist in the browser.
   const raw = await page.evaluate((cardSelectors: readonly string[]) => {
     const cards = cardSelectors
       .map((selector) => Array.from(document.querySelectorAll(selector)))
       .find((found) => found.length > 0);
-    const text = (root: Element, selectors: string[]): string => {
-      for (const selector of selectors) {
-        const node = root.querySelector(selector);
-        if (node?.textContent?.trim()) return node.textContent.trim();
-      }
-      return "";
-    };
-    return (cards ?? []).map((card) => {
-      const link = card.querySelector<HTMLAnchorElement>('a[href*="/v-"], a[href*="adId="]');
-      return {
-        href: link?.href ?? "",
-        title: text(card, ['[data-testid="listing-title"]', "h3", "h2", "a[title]"]),
-        priceText: text(card, ['[data-testid="listing-price"]', ".price", '[class*="price"]']),
-        location: text(card, ['[data-testid="listing-location"]', '[class*="location"]']),
-        postedAt: text(card, ['[data-testid="listing-date"]', "time", '[class*="date"]']),
-      };
-    });
+    return (cards ?? []).map((card) => ({
+      href:
+        card.querySelector<HTMLAnchorElement>('a[href*="/v-"], a[href*="adId="]')?.href ?? "",
+      title:
+        ['[data-testid="listing-title"]', "h3", "h2", "a[title]"]
+          .map((selector) => card.querySelector(selector)?.textContent?.trim() ?? "")
+          .find((value) => value) ?? "",
+      priceText:
+        ['[data-testid="listing-price"]', ".price", '[class*="price"]']
+          .map((selector) => card.querySelector(selector)?.textContent?.trim() ?? "")
+          .find((value) => value) ?? "",
+      location:
+        ['[data-testid="listing-location"]', '[class*="location"]']
+          .map((selector) => card.querySelector(selector)?.textContent?.trim() ?? "")
+          .find((value) => value) ?? "",
+      postedAt:
+        ['[data-testid="listing-date"]', "time", '[class*="date"]']
+          .map((selector) => card.querySelector(selector)?.textContent?.trim() ?? "")
+          .find((value) => value) ?? "",
+    }));
   }, selectors.searchResultCard);
 
   return raw
@@ -133,7 +138,7 @@ async function structuredListing(page: Page): Promise<ProductLd | undefined> {
 export async function view(agent: Agent, idOrUrl: string): Promise<ListingDetail> {
   const { page } = agent;
   const url = listingUrl(idOrUrl);
-  await page.goto(url, { waitUntil: "domcontentloaded" });
+  await open(page, url);
   await dismissOverlays(page);
 
   const product = await structuredListing(page);
