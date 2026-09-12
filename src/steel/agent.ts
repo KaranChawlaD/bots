@@ -63,7 +63,8 @@ export class Agent {
     log.info(
       `[${account.id}] session ${session.id}${profile ? " (restored profile)" : " (fresh profile)"}`,
     );
-    if (options.showViewer && session.debugUrl) log.info(`[${account.id}] viewer ${session.debugUrl}`);
+    const viewerUrl = session.sessionViewerUrl || session.debugUrl;
+    if (options.showViewer && viewerUrl) log.info(`[${account.id}] viewer ${viewerUrl}`);
 
     const browser = await chromium.connectOverCDP(connectUrl(session.websocketUrl));
     const context = browser.contexts()[0];
@@ -74,7 +75,7 @@ export class Agent {
     return new Agent(
       account,
       session.id,
-      session.debugUrl,
+      viewerUrl,
       browser,
       context,
       page,

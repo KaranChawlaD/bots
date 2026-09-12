@@ -42,7 +42,7 @@ export async function sendMessage(
   await ensureLoggedIn(agent);
   const listing = await view(agent, url);
 
-  if (!options.autoApprove) {
+  if (!options.autoApprove && !options.dryRun) {
     const approved = await confirm(
       `\nSend from "${agent.account.id}" to seller of "${listing.title}" (${listing.priceText}):\n` +
         `${body}\n\nSend it?`,
@@ -51,12 +51,15 @@ export async function sendMessage(
   }
 
   const { page } = agent;
-  const opener = await findFirst(page, "messageOpenButton", 10_000);
-  if (opener) {
-    await opener.click();
-    await dismissOverlays(page);
+  let field = await findFirst(page, "messageField", 5_000);
+  if (!field) {
+    const opener = await findFirst(page, "messageOpenButton", 10_000);
+    if (opener) {
+      await opener.click();
+      await dismissOverlays(page);
+    }
+    field = await requireFirst(page, "messageField", 15_000);
   }
-  const field = await requireFirst(page, "messageField", 15_000);
   await typeSlowly(field, body);
 
   if (options.dryRun) {
@@ -78,6 +81,7 @@ export async function sendMessage(
   recordSend({
     accountId: agent.account.id,
     listingUrl: listing.url,
+    ...(listing.id ? { listingId: listing.id } : {}),
     sentAt: new Date().toISOString(),
     preview: body.slice(0, 120),
   });

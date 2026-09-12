@@ -4,8 +4,8 @@
  */
 export const selectors = {
   signInLink: [
-    'a[href*="/t-login.html"]',
-    'a[data-testid="header-sign-in"]',
+    '[data-testid="header-sign-in"]',
+    'a[href*="/consumer/login"]',
     'button:has-text("Sign In")',
   ],
   emailField: ['input[type="email"]', 'input[name="email"]', "#email"],
@@ -17,13 +17,17 @@ export const selectors = {
   ],
   totpField: ['input[name="code"]', 'input[autocomplete="one-time-code"]', 'input[name="otp"]'],
   loggedInMarker: [
+    '[data-testid="header-avatar"]',
+    '[data-testid="header-my-account"]',
     'a[href*="/m-my-ads"]',
     'a[href*="/m-msg-my-messages"]',
-    '[data-testid="header-avatar"]',
   ],
+  /** Present only while signed out; the header shows buttons, not links. */
+  signedOutMarker: ['[data-testid="header-sign-in"]', '[data-testid="header-register"]'],
   searchKeywordInput: [
+    '[data-testid="global-header-search-bar"] input',
+    '[data-testid="global-search-bar"] input',
     'input[name="keywords"]',
-    'input[data-testid="search-keyword-input"]',
     'input[placeholder*="what are you looking for" i]',
     'input[type="search"]',
   ],
@@ -32,22 +36,25 @@ export const selectors = {
     'form button[type="submit"]',
     'button:has-text("Search")',
   ],
-  nextPageLink: ['a[title="Next"]', 'a[data-testid="pagination-next-link"]', 'a[rel="next"]'],
   searchResultCard: [
+    '[data-testid="rich-card"]',
+    '[data-testid="srp-grid-search-list"] > li',
     '[data-testid="listing-card"]',
     "[data-listing-id]",
-    'section[data-testid="srp-search-list"] li',
-    "div.search-item",
   ],
   listingTitle: ['h1[data-testid="vip-title"]', "h1"],
   listingPrice: ['[data-testid="vip-price"]', '[itemprop="price"]', "span.price"],
-  listingDescription: ['[data-testid="vip-description"]', 'div[itemprop="description"]'],
-  listingSeller: ['[data-testid="vip-seller-name"]', 'a[href*="/o-profile/"]'],
+  listingDescription: [
+    '[data-testid="vip-description-wrapper"]',
+    '[data-testid="vip-description"]',
+  ],
+  listingSeller: ['[data-testid="vip-about-seller"] a[href*="/o-profile/"]', 'a[href*="/o-profile/"]'],
   listingLocation: ['[data-testid="vip-location"]', 'span[itemprop="address"]'],
+  /** Only openers — never the composer's own "Send message" submit button. */
   messageOpenButton: [
-    'button:has-text("Message")',
-    'button:has-text("Send message")',
     '[data-testid="vip-contact-message"]',
+    'button:text-is("Message")',
+    'button:text-is("Contact seller")',
   ],
   messageField: [
     'textarea[name="message"]',
@@ -57,16 +64,18 @@ export const selectors = {
   ],
   messageSendButton: [
     'button[data-testid="send-message"]',
-    'form button:has-text("Send")',
+    '[data-testid="r2s-form"] button[type="submit"]',
     'button:has-text("Send message")',
   ],
   messageSentMarker: [
     'text=/message (was )?sent/i',
     '[data-testid="message-sent-confirmation"]',
   ],
-  postCategoryKeywordInput: [
+  /** First step of posting: the ad title, which Kijiji turns into category suggestions. */
+  postTitleSeedField: [
     'input[data-testid="category-search-input"]',
     'input[placeholder*="what are you posting" i]',
+    'input[placeholder*="title" i]',
     'input[name="categoryKeyword"]',
     'form input[type="text"]',
   ],

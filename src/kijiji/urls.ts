@@ -1,5 +1,5 @@
 export const KIJIJI_BASE = "https://www.kijiji.ca";
-export const LOGIN_URL = `${KIJIJI_BASE}/t-login.html`;
+export const LOGIN_URL = `${KIJIJI_BASE}/consumer/login`;
 export const MESSAGES_URL = `${KIJIJI_BASE}/m-msg-my-messages/`;
 
 export interface SearchQuery {
@@ -12,13 +12,25 @@ export interface SearchQuery {
   limit?: number;
 }
 
+/** Keyword segment of a search URL: "PS5 controller" -> "ps5-controller". */
+function keywordSlug(keywords: string): string {
+  const slug = keywords
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!slug) throw new Error("Search keywords cannot be empty.");
+  return slug;
+}
+
 /**
- * Search result pages are reached by driving the site's own search box (its URL
- * scheme changes often), then refined with query parameters on whatever URL
- * Kijiji lands on.
+ * Keyword search across all categories in Canada:
+ * https://www.kijiji.ca/b-canada/<keywords>/k0l0 , page N as a "/page-N"
+ * segment in front of the trailing "k0l0".
  */
-export function refineSearchUrl(currentUrl: string, query: SearchQuery): string {
-  const url = new URL(currentUrl);
+export function searchUrl(query: SearchQuery, pageNumber = 1): string {
+  const page = pageNumber > 1 ? `/page-${pageNumber}` : "";
+  const url = new URL(`${KIJIJI_BASE}/b-canada/${keywordSlug(query.keywords)}${page}/k0l0`);
   url.searchParams.set("sort", query.sort ?? "dateDesc");
   if (query.minPrice !== undefined || query.maxPrice !== undefined) {
     url.searchParams.set("price", `${query.minPrice ?? 0}__${query.maxPrice ?? ""}`);

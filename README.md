@@ -34,7 +34,7 @@ npm run kijiji -- view https://www.kijiji.ca/v-view-details.html?adId=1700000000
 
 # message a seller from a chosen account (asks for confirmation first)
 npm run kijiji -- message 1700000000 --account primary --text "Hi, is this still available?"
-npm run kijiji -- message 1700000000 --dry-run      # types the message, stops before sending
+npm run kijiji -- message 1700000000 --dry-run      # types the message, stops before sending (no prompt)
 
 # price offers: each listing's ask is read live, the offer is drafted from it, you approve
 npm run kijiji -- offer 1700000000 1700000001 --percent 80 --floor 40 --note "Can pick up this weekend."
@@ -86,6 +86,20 @@ change how many are quoted (3).
 `plan-offers --price-match` does the same offline, using the other listings in
 the search file as the comparables.
 
+## How Kijiji is reached
+
+Kijiji publishes no public developer API, so everything here is a real browser
+driven through Steel:
+
+- **Search** goes straight to `kijiji.ca/b-canada/<keywords>/k0l0` with `sort` and
+  `price` parameters, paging through `/page-N` — no dependence on the header
+  search box.
+- **Listing details** are read from the page's schema.org JSON-LD first, with DOM
+  selectors as the fallback, so a class rename doesn't blank out a listing.
+- **Sign-in, messaging and posting** are DOM-driven and can only be verified
+  against a signed-in account; treat those selectors as the first thing to check
+  when a run fails.
+
 ## Layout
 
 ```
@@ -114,9 +128,12 @@ only place selectors live.
 `post` takes a JSON file with one draft or an array of them (see
 `listing.example.json`): `title`, `description`, `category`, `location`, `price`
 (a number, `"free"` or `"contact"`), optional `photos` paths, and an optional
-`account`. The category string is typed into Kijiji's picker and the first
-suggestion is taken, so word it the way Kijiji labels it. The whole form is
-filled and shown to you before anything is published.
+`account`. Kijiji's first posting step takes the ad title and offers matching
+categories: the title is typed in, then the suggestion containing your `category`
+is picked (falling back to Kijiji's first suggestion, with a warning). Photo
+paths are absolute or relative to the directory you run from. The whole form is
+filled and shown to you before anything is published; `--dry-run` stops after
+filling it.
 
 ## Notes
 

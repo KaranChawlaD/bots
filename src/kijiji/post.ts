@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
+import type { Locator } from "playwright-core";
 import type { Agent } from "../steel/agent.js";
 import { logger } from "../log.js";
 import { confirm } from "../safety.js";
@@ -10,7 +11,8 @@ import { KIJIJI_BASE } from "./urls.js";
 
 const log = logger("post");
 
-export const POST_AD_URL = `${KIJIJI_BASE}/p-post-ad.html`;
+/** "Post ad" starts on the category step; /p-post-ad.html redirects here. */
+export const POST_AD_URL = `${KIJIJI_BASE}/p-select-category.html`;
 
 export interface ListingDraft {
   /** Which account posts it; the CLI resolves this to an agent. */
@@ -18,11 +20,11 @@ export interface ListingDraft {
   title: string;
   description: string;
   price: number | "free" | "contact";
-  /** Typed into the category picker, then the first suggestion is taken. */
+  /** Kijiji category label; matched against the suggestions Kijiji offers for the title. */
   category: string;
   /** Postal code or city typed into the location field. */
   location: string;
-  /** Image paths, relative to the repo root or absolute. */
+  /** Image paths, absolute or relative to the working directory. */
   photos?: string[];
 }
 
@@ -72,9 +74,11 @@ export async function postListing(
   await page.goto(POST_AD_URL, { waitUntil: "domcontentloaded" });
   await dismissOverlays(page);
 
-  await chooseCategory(agent, draft.category);
+  await chooseCategory(agent, draft);
 
-  await typeSlowly(await requireFirst(page, "postTitleField", 30_000), draft.title);
+  const titleField = await findFirst(page, "postTitleField", 30_000);
+  if (titleField) await typeSlowly(titleField, draft.title);
+  else log.debug("title already carried over from the category step");
   await typeSlowly(await requireFirst(page, "postDescriptionField"), draft.description);
 
   if (typeof draft.price === "number") {
@@ -86,6 +90,11 @@ export async function postListing(
   await fillLocation(agent, draft.location);
   await attachPhotos(agent, draft.photos ?? []);
 
+  if (options.dryRun) {
+    log.warn(`[${agent.account.id}] dry run — form filled but not published`);
+    return { status: "draft-only", url: page.url(), title: draft.title, account: agent.account.id };
+  }
+
   if (!options.autoApprove) {
     const priceLabel = typeof draft.price === "number" ? `$${draft.price}` : draft.price;
     const approved = await confirm(
@@ -95,11 +104,6 @@ export async function postListing(
     if (!approved) {
       return { status: "draft-only", url: page.url(), title: draft.title, account: agent.account.id };
     }
-  }
-
-  if (options.dryRun) {
-    log.warn(`[${agent.account.id}] dry run — form filled but not published`);
-    return { status: "draft-only", url: page.url(), title: draft.title, account: agent.account.id };
   }
 
   await (await requireFirst(page, "postSubmitButton")).click();
@@ -116,24 +120,48 @@ export async function postListing(
   return { status: "posted", url: page.url(), title: draft.title, account: agent.account.id };
 }
 
-async function chooseCategory(agent: Agent, category: string): Promise<void> {
+/**
+ * Kijiji's first posting step takes the ad title and offers matching
+ * categories; the draft's category picks among them.
+ */
+async function chooseCategory(agent: Agent, draft: ListingDraft): Promise<void> {
   const { page } = agent;
-  const input = await findFirst(page, "postCategoryKeywordInput", 20_000);
+  const input = await findFirst(page, "postTitleSeedField", 20_000);
   if (!input) {
     log.warn("no category picker on this page — assuming the form starts at the details step");
     return;
   }
-  await typeSlowly(input, category);
-  const suggestion = await findFirst(page, "postCategorySuggestion", 10_000);
+  await typeSlowly(input, draft.title);
+  const suggestion =
+    (await matchingSuggestion(agent, draft.category)) ??
+    (await findFirst(page, "postCategorySuggestion", 10_000));
   if (!suggestion) {
     throw new Error(
-      `Kijiji suggested no category for "${category}". Try wording it the way Kijiji labels it, e.g. "Video games & consoles".`,
+      `Kijiji suggested no category for "${draft.title}". Try a title that names the item plainly.`,
     );
   }
   await suggestion.click();
   const next = await findFirst(page, "postContinueButton", 8_000);
   if (next) await next.click();
   await page.waitForLoadState("domcontentloaded").catch(() => undefined);
+}
+
+/** The suggested category whose label contains the draft's category, if any. */
+async function matchingSuggestion(agent: Agent, category: string): Promise<Locator | undefined> {
+  const { page } = agent;
+  const wanted = category.trim().toLowerCase();
+  if (!(await findFirst(page, "postCategorySuggestion", 10_000))) return undefined;
+  for (const selector of selectors.postCategorySuggestion) {
+    const options = page.locator(selector);
+    const count = await options.count().catch(() => 0);
+    for (let index = 0; index < count; index += 1) {
+      const option = options.nth(index);
+      const label = (await option.innerText().catch(() => "")).trim().toLowerCase();
+      if (label && label.includes(wanted)) return option;
+    }
+  }
+  log.warn(`no suggested category matched "${category}" — taking Kijiji's first suggestion`);
+  return undefined;
 }
 
 async function fillLocation(agent: Agent, location: string): Promise<void> {

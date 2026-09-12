@@ -13,6 +13,7 @@ export async function isLoggedIn(agent: Agent): Promise<boolean> {
     await page.goto(KIJIJI_BASE, { waitUntil: "domcontentloaded" });
   }
   await dismissOverlays(page);
+  if (await findFirst(page, "signedOutMarker", 5_000)) return false;
   return (await findFirst(page, "loggedInMarker", 5_000)) !== undefined;
 }
 
