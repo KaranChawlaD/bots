@@ -90,17 +90,27 @@ export const selectors = {
   ],
   /** First step of posting: the ad title, which Kijiji turns into category suggestions. */
   postTitleSeedField: [
+    "textarea#AdTitleForm",
+    'textarea[name="AdTitleForm"]',
     'input[data-testid="category-search-input"]',
     'input[placeholder*="what are you posting" i]',
     'input[placeholder*="title" i]',
     'input[name="categoryKeyword"]',
     'form input[type="text"]',
   ],
+  /** Kijiji's own guess at the category for the typed title. */
   postCategorySuggestion: [
+    '#CategorySuggestion div[class^="suggestionsContainer"] li button',
     '[data-testid="category-suggestion"]',
-    'ul[role="listbox"] li',
+  ],
+  /** One level of the manual category tree, redrawn in place as you descend. */
+  postCategoryOption: [
+    '#CategorySuggestion div[class^="allCategoriesContainer"] li button',
+    '#CategorySuggestion ul li button',
     'button[data-testid="category-option"]',
   ],
+  /** Kijiji asks for a site-wide location before it will render the ad form. */
+  siteLocationPrompt: ['text=/to see classifieds ads or post your own ad/i'],
   postTitleField: ['input[name="title"]', 'input[data-testid="title-input"]', "#postad-title"],
   postDescriptionField: [
     'textarea[name="description"]',
@@ -109,6 +119,7 @@ export const selectors = {
   ],
   postPriceField: ['input[name="price"]', 'input[data-testid="price-input"]', "#PriceAmount"],
   postLocationField: [
+    "textarea#location",
     'input[name="location"]',
     'input[data-testid="location-input"]',
     'input[placeholder*="postal code" i]',
@@ -116,11 +127,13 @@ export const selectors = {
   postLocationSuggestion: ['ul[role="listbox"] li', '[data-testid="location-suggestion"]'],
   postPhotoInput: ['input[type="file"]'],
   postContinueButton: [
+    'button[aria-controls="CategorySuggestion"]',
     'button[data-testid="next-button"]',
     'button:has-text("Next")',
     'button:has-text("Continue")',
   ],
   postSubmitButton: [
+    'button:has-text("Post Your Ad")',
     'button[data-testid="post-ad-button"]',
     'button:has-text("Post your ad")',
     'button:has-text("Post Ad")',

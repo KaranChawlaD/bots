@@ -66,6 +66,13 @@ export async function sendMessage(
     field = await requireFirst(page, "messageField", 15_000);
   }
   await typeSlowly(field, body);
+  const typed = await field.inputValue().catch(() => "");
+  if (typed.trim() !== body.trim()) {
+    throw new Error(
+      `[${agent.account.id}] the composer holds ${typed.length} of ${body.length} characters — ` +
+        `the message did not go in cleanly, so nothing was sent.`,
+    );
+  }
 
   if (options.dryRun) {
     log.warn(`[${agent.account.id}] dry run — message typed but not sent`);

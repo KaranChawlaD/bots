@@ -379,6 +379,7 @@ async function commandPost(
   const autoApprove = flagBool(args, "yes");
 
   let posted = 0;
+  let failed = 0;
   for (const [index, draft] of drafts.entries()) {
     const account = draft.account ? selectAccounts(settings, [draft.account])[0]! : fallback;
     log.info(`listing ${index + 1}/${drafts.length} — ${account.id} → "${draft.title}"`);
@@ -393,11 +394,12 @@ async function commandPost(
         log.warn(`  not published (${dryRun ? "dry run" : "declined"})`);
       }
     } catch (error) {
+      failed += 1;
       log.error(`  failed: ${describe(error)}`);
     }
   }
   success(`Posting finished: ${posted}/${drafts.length} live.`);
-  return posted === drafts.length ? 0 : 1;
+  return failed === 0 ? 0 : 1;
 }
 
 async function commandRun(

@@ -80,7 +80,9 @@ export function pickComparables(
   if (ask === undefined) return [];
   const minPrice = ask * (options.minRatio ?? 0.5);
   const wanted = tokens(options.query ?? target.title);
-  const needed = Math.max(1, Math.ceil(wanted.size / 2));
+  // Half the words is too loose: "carrying case for Nintendo Switch" shares two
+  // of "nintendo switch dock" and is not the same item.
+  const needed = Math.max(1, Math.ceil(wanted.size * 0.75));
 
   const seen = new Set<string>();
   return pool
@@ -121,9 +123,11 @@ export async function findComparables(
     log.warn(`could not derive search wording from "${target.title}" — pass --comps-query`);
     return [];
   }
+  const minRatio = options.minRatio ?? 0.5;
   const pool = await search(agent, {
     keywords,
     sort: "priceAsc",
+    minPrice: Math.ceil(target.price * minRatio),
     maxPrice: Math.floor(target.price) - 1,
     limit: options.scan ?? 25,
   });

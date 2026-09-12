@@ -43,13 +43,14 @@ export function offerPrice(listing: Pick<ListingSummary, "price">, input: OfferI
   } else if (match) {
     amount = match.price;
   } else if (listing.price !== undefined) {
-    amount = (listing.price * (input.percent ?? 85)) / 100;
+    // Round down: rounding up would offer more than the percentage asked for.
+    const raw = (listing.price * (input.percent ?? 85)) / 100;
+    amount = raw >= roundTo ? Math.floor(raw / roundTo) * roundTo : Math.max(1, Math.round(raw));
   } else {
     throw new Error(
       "This listing has no readable price, so an offer percentage can't be applied — pass --amount instead.",
     );
   }
-  amount = Math.round(amount / roundTo) * roundTo;
   if (input.floor !== undefined) amount = Math.max(amount, input.floor);
   if (input.ceiling !== undefined) amount = Math.min(amount, input.ceiling);
   if (!Number.isFinite(amount) || amount <= 0) {

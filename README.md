@@ -140,13 +140,19 @@ only place selectors live.
 
 `post` takes a JSON file with one draft or an array of them (see
 `listing.example.json`): `title`, `description`, `category`, `location`, `price`
-(a number, `"free"` or `"contact"`), optional `photos` paths, and an optional
-`account`. Kijiji's first posting step takes the ad title and offers matching
-categories: the title is typed in, then the suggestion containing your `category`
-is picked (falling back to Kijiji's first suggestion, with a warning). Photo
-paths are absolute or relative to the directory you run from. The whole form is
-filled and shown to you before anything is published; `--dry-run` stops after
-filling it.
+(a number, `"free"` or `"contact"`), optional `photos` paths, optional
+`locationId`, and an optional `account`. Kijiji's first posting step takes the ad
+title and only then shows categories: give `category` as a full path such as
+`"Buy & Sell > Video Games & Consoles > Nintendo Switch"` and each level is
+clicked in turn; a single label falls back to Kijiji's own suggestion, with a
+warning.
+
+Kijiji will not render the ad form until the browser has an area set, so drafts
+need `locationId` — the number in any Kijiji city URL, e.g.
+`/b-city-of-toronto/l1700273` → `1700273`. `location` is the postal code typed
+into the ad itself. Photo paths are absolute or relative to the directory you run
+from. The whole form is filled and shown to you before anything is published;
+`--dry-run` stops after filling it.
 
 ## Notes
 
