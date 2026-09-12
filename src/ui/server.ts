@@ -15,7 +15,7 @@ import { sendMessage } from "../kijiji/messages.js";
 import { postListing, validateDraft, type ListingDraft } from "../kijiji/post.js";
 import { sendHistory } from "../safety.js";
 import { answerJob, getJob, listJobs, startJob } from "./jobs.js";
-import { isAuthed, login, logout, uiPassword } from "./auth.js";
+import { isAuthed, login, logout, passwordRequired } from "./auth.js";
 
 const log = logger("ui");
 const webRoot = resolve(projectRoot, "web");
@@ -331,6 +331,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return;
   }
 
+  if (req.method === "GET" && path === "/api/auth") {
+    sendJson(res, 200, { passwordRequired: passwordRequired() });
+    return;
+  }
+
   if (req.method === "GET" && path === "/api/state") {
     sendJson(res, 200, state());
     return;
@@ -378,13 +383,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
 const port = Number(process.env.PORT ?? 5173);
 const host = process.env.HOST ?? "127.0.0.1";
 
-uiPassword();
-
 createServer((req, res) => {
   handle(req, res).catch((error: unknown) => {
     log.error(describe(error));
     if (!res.headersSent) sendJson(res, 500, { error: describe(error) });
   });
 }).listen(port, host, () => {
-  log.info(`control panel on http://${host}:${port} — password required`);
+  log.info(`control panel on http://${host}:${port}`);
+  if (passwordRequired()) log.info("a password is required to open it");
+  else log.warn("no UI_PASSWORD set — anyone who can reach this port drives your accounts");
 });

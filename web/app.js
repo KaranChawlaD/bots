@@ -21,6 +21,11 @@ el("logout").addEventListener("click", async () => {
   location.href = "/login";
 });
 
+// Nothing to sign out of when the server runs without a password.
+api("/api/auth").then(({ passwordRequired }) => {
+  el("logout").hidden = !passwordRequired;
+});
+
 function selectedAccounts() {
   return Array.from(document.querySelectorAll("#agents input:checked")).map((box) => box.value);
 }
