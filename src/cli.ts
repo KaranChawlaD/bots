@@ -9,6 +9,7 @@ import { loadProfile, profileAge } from "./steel/profiles.js";
 import { ensureLoggedIn, isLoggedIn } from "./kijiji/auth.js";
 import { search, view, type ListingSummary } from "./kijiji/listings.js";
 import { draftOffer, type OfferInput } from "./kijiji/offers.js";
+import { findComparables, pickComparables, type CompOptions } from "./kijiji/comps.js";
 import { sendMessage } from "./kijiji/messages.js";
 import { postListing, validateDraft, type ListingDraft } from "./kijiji/post.js";
 import { sendHistory } from "./safety.js";
@@ -31,10 +32,11 @@ Commands
             --text "..." | --text-file path  [--account a] [--dry-run] [--yes]
   offer   <listing-url|adId>...  Draft a price offer per listing and send it
             [--percent 85 | --amount N] [--floor N] [--ceiling N] [--round-to 5]
+            [--price-match] [--comps 3] [--comps-query "..."] [--comps-min-ratio 0.5]
             [--note "..."] [--account a,b] [--dry-run] [--yes]
   plan-offers <results.json>     Turn "search --json" output into an offer plan you can edit
-            [--percent 85] [--amount N] [--floor N] [--note "..."]
-            [--account a,b] [--out plan.json]
+            [--percent 85] [--amount N] [--floor N] [--note "..."] [--price-match]
+            [--comps 3] [--account a,b] [--out plan.json]
   post    <listing.json>         Create a listing for something you're selling
             [--account a] [--dry-run] [--yes]
   run     <plan.json>            Work through a plan of per-account message tasks
@@ -232,6 +234,19 @@ function offerInput(args: ParsedArgs): OfferInput {
   };
 }
 
+function compOptions(args: ParsedArgs): CompOptions {
+  const limit = flagNumber(args, "comps");
+  const query = flagString(args, "comps-query");
+  const minRatio = flagNumber(args, "comps-min-ratio");
+  const scan = flagNumber(args, "comps-scan");
+  return {
+    ...(limit !== undefined ? { limit } : {}),
+    ...(query ? { query } : {}),
+    ...(minRatio !== undefined ? { minRatio } : {}),
+    ...(scan !== undefined ? { scan } : {}),
+  };
+}
+
 /**
  * Offers go out one listing at a time, each from the next account in the
  * rotation, each drafted from that listing's own asking price.
@@ -245,6 +260,8 @@ async function commandOffer(
   if (targets.length === 0) throw new Error("offer needs at least one listing URL or ad id.");
   const accounts = selectAccounts(settings, flagList(args, "account"));
   const input = offerInput(args);
+  const priceMatch = flagBool(args, "price-match");
+  const comps = compOptions(args);
   const dryRun = flagBool(args, "dry-run");
   const autoApprove = flagBool(args, "yes");
 
@@ -256,10 +273,15 @@ async function commandOffer(
     try {
       const outcome = await withAgent(account, { showViewer }, async (agent) => {
         const listing = await view(agent, target);
-        const offer = draftOffer(listing, { ...input, variant: index });
+        const comparables = priceMatch ? await findComparables(agent, listing, comps) : [];
+        if (priceMatch && comparables.length === 0) {
+          log.warn("  no cheaper comparable listings found — offering off the ask instead");
+        }
+        const offer = draftOffer(listing, { ...input, priceMatch, comparables, variant: index });
         process.stdout.write(
           `  asking ${listing.priceText || "—"} → offering $${offer.amount}` +
-            `${offer.discountPercent !== undefined ? ` (${offer.discountPercent}% under)` : ""}\n`,
+            `${offer.discountPercent !== undefined ? ` (${offer.discountPercent}% under)` : ""}` +
+            `${comparables.length > 0 ? `, citing ${comparables.length} cheaper listing(s)` : ""}\n`,
         );
         return sendMessage(agent, listing.url, offer.message, {
           limits: settings.limits,
@@ -287,6 +309,8 @@ function commandPlanOffers(settings: Settings, args: ParsedArgs): number {
   if (!resultsPath) throw new Error("plan-offers needs the path to a `search --json` file.");
   const accounts = selectAccounts(settings, flagList(args, "account"));
   const input = offerInput(args);
+  const priceMatch = flagBool(args, "price-match");
+  const comps = compOptions(args);
 
   const parsed = JSON.parse(readFileSync(resultsPath, "utf8")) as
     | ListingSummary[]
@@ -297,10 +321,12 @@ function commandPlanOffers(settings: Settings, args: ParsedArgs): number {
   const tasks: PlanTask[] = [];
   for (const [index, listing] of listings.entries()) {
     try {
+      // Offline, the other listings in the same search are the comparables.
+      const comparables = priceMatch ? pickComparables(listings, listing, comps) : [];
       tasks.push({
         account: accounts[index % accounts.length]!.id,
         listing: listing.url,
-        message: draftOffer(listing, { ...input, variant: index }).message,
+        message: draftOffer(listing, { ...input, priceMatch, comparables, variant: index }).message,
       });
     } catch (error) {
       log.warn(`skipping "${listing.title}": ${describe(error)}`);

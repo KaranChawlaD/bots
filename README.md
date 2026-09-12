@@ -40,6 +40,9 @@ npm run kijiji -- message 1700000000 --dry-run      # types the message, stops b
 npm run kijiji -- offer 1700000000 1700000001 --percent 80 --floor 40 --note "Can pick up this weekend."
 npm run kijiji -- offer 1700000000 --amount 150 --account secondary --dry-run
 
+# ask a seller to match cheaper live listings of the same item
+npm run kijiji -- offer 1700000000 --price-match --comps 3 --floor 40
+
 # post a listing for something you're selling (form is filled, then you confirm)
 npm run kijiji -- post listing.example.json --dry-run
 npm run kijiji -- post listing.example.json --account secondary
@@ -66,6 +69,23 @@ Offers are priced per listing from that listing's live asking price (`--percent`
 with `--floor`/`--ceiling` bounds) or pinned with `--amount`, and rotate between
 wording variants so they don't read as a copy-paste blast.
 
+## Price matching
+
+`--price-match` has the agent search Kijiji for the same item, keep the listings
+that are genuinely cheaper, and quote them with their prices and links so the
+seller can check them. The offer is then the cheapest of those (still bounded by
+`--floor`/`--ceiling`), rather than a percentage of the ask.
+
+Comparables are filtered before they are cited: a real price, cheaper than the
+ask, at least half the title words in common, and no lower than `--comps-min-ratio`
+(0.5) of the ask so accessories and parts don't get quoted as the same item. If
+nothing survives the filter, the offer falls back to the percentage and cites
+nothing. Use `--comps-query` when the title is worded oddly, and `--comps` to
+change how many are quoted (3).
+
+`plan-offers --price-match` does the same offline, using the other listings in
+the search file as the comparables.
+
 ## Layout
 
 ```
@@ -79,6 +99,7 @@ src/
   kijiji/auth.ts      sign-in and two-factor
   kijiji/listings.ts  search results and listing details
   kijiji/offers.ts    offer pricing and message drafting
+  kijiji/comps.ts     finding cheaper comparable listings to cite
   kijiji/messages.ts  the send flow
   kijiji/post.ts      creating a listing from a draft file
   kijiji/selectors.ts every DOM selector, with fallbacks

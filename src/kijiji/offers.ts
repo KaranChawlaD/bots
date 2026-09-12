@@ -1,3 +1,4 @@
+import type { Comparable } from "./comps.js";
 import type { ListingSummary } from "./listings.js";
 
 export interface OfferInput {
@@ -15,20 +16,32 @@ export interface OfferInput {
   note?: string;
   /** Picks which wording variant is used, so repeated runs aren't identical. */
   variant?: number;
+  /** Cheaper live listings of the same item, quoted in the message. */
+  comparables?: Comparable[];
+  /** Price off the cheapest comparable instead of a percentage of the ask. */
+  priceMatch?: boolean;
 }
 
 export interface Offer {
   amount: number;
   askingPrice?: number;
   discountPercent?: number;
+  comparables?: Comparable[];
   message: string;
+}
+
+function cheapest(comparables: Comparable[] | undefined): Comparable | undefined {
+  return [...(comparables ?? [])].sort((a, b) => a.price - b.price)[0];
 }
 
 export function offerPrice(listing: Pick<ListingSummary, "price">, input: OfferInput): number {
   const roundTo = input.roundTo ?? 5;
   let amount: number;
+  const match = input.priceMatch ? cheapest(input.comparables) : undefined;
   if (input.amount !== undefined) {
     amount = input.amount;
+  } else if (match) {
+    amount = match.price;
   } else if (listing.price !== undefined) {
     amount = (listing.price * (input.percent ?? 85)) / 100;
   } else {
@@ -54,15 +67,35 @@ const templates: Array<(context: { title: string; amount: number }) => string> =
     `Hi there, nice listing. I can offer $${amount} and pick it up this week — let me know if that's workable.`,
 ];
 
+/**
+ * Quotes the cheaper listings so the seller can check them: each one is a live
+ * ad with its own price and link, not a claim they have to take on faith.
+ */
+function comparableLines(comparables: Comparable[]): string {
+  const listed = comparables
+    .map((comp) => `- ${comp.priceText || `$${comp.price}`} — ${comp.title.trim()}\n  ${comp.url}`)
+    .join("\n");
+  const lead =
+    comparables.length === 1
+      ? "I'm comparing it with this one that's up right now:"
+      : "I'm comparing it with these that are up right now:";
+  return `${lead}\n${listed}`;
+}
+
 export function draftOffer(
   listing: Pick<ListingSummary, "title" | "price" | "priceText">,
   input: OfferInput,
 ): Offer {
   const amount = offerPrice(listing, input);
   const template = templates[(input.variant ?? 0) % templates.length]!;
-  const body = template({ title: listing.title.trim(), amount });
+  let body = template({ title: listing.title.trim(), amount });
+  const comparables = input.comparables ?? [];
+  if (comparables.length > 0) {
+    body = `${body}\n\n${comparableLines(comparables)}\n\nAny chance you could match that? Yours is closer to me, so I'd rather buy from you.`;
+  }
   return {
     amount,
+    ...(comparables.length > 0 ? { comparables } : {}),
     ...(listing.price !== undefined ? { askingPrice: listing.price } : {}),
     ...(listing.price !== undefined
       ? { discountPercent: Math.round((1 - amount / listing.price) * 100) }
