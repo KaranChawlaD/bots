@@ -64,6 +64,47 @@ export const selectors = {
     'text=/message (was )?sent/i',
     '[data-testid="message-sent-confirmation"]',
   ],
+  postCategoryKeywordInput: [
+    'input[data-testid="category-search-input"]',
+    'input[placeholder*="what are you posting" i]',
+    'input[name="categoryKeyword"]',
+    'form input[type="text"]',
+  ],
+  postCategorySuggestion: [
+    '[data-testid="category-suggestion"]',
+    'ul[role="listbox"] li',
+    'button[data-testid="category-option"]',
+  ],
+  postTitleField: ['input[name="title"]', 'input[data-testid="title-input"]', "#postad-title"],
+  postDescriptionField: [
+    'textarea[name="description"]',
+    'textarea[data-testid="description-input"]',
+    "#pstad-descrptn",
+  ],
+  postPriceField: ['input[name="price"]', 'input[data-testid="price-input"]', "#PriceAmount"],
+  postLocationField: [
+    'input[name="location"]',
+    'input[data-testid="location-input"]',
+    'input[placeholder*="postal code" i]',
+  ],
+  postLocationSuggestion: ['ul[role="listbox"] li', '[data-testid="location-suggestion"]'],
+  postPhotoInput: ['input[type="file"]'],
+  postContinueButton: [
+    'button[data-testid="next-button"]',
+    'button:has-text("Next")',
+    'button:has-text("Continue")',
+  ],
+  postSubmitButton: [
+    'button[data-testid="post-ad-button"]',
+    'button:has-text("Post your ad")',
+    'button:has-text("Post Ad")',
+    'button[type="submit"]',
+  ],
+  postSuccessMarker: [
+    'text=/your ad is (now )?(live|posted)/i',
+    '[data-testid="post-ad-success"]',
+    'a[href*="/m-my-ads"]',
+  ],
 } as const;
 
 export type SelectorKey = keyof typeof selectors;

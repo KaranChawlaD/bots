@@ -40,6 +40,10 @@ npm run kijiji -- message 1700000000 --dry-run      # types the message, stops b
 npm run kijiji -- offer 1700000000 1700000001 --percent 80 --floor 40 --note "Can pick up this weekend."
 npm run kijiji -- offer 1700000000 --amount 150 --account secondary --dry-run
 
+# post a listing for something you're selling (form is filled, then you confirm)
+npm run kijiji -- post listing.example.json --dry-run
+npm run kijiji -- post listing.example.json --account secondary
+
 # turn a saved search into an offer plan, edit it, then work through it
 npm run kijiji -- search "ps5 controller" --json > results.json
 npm run kijiji -- plan-offers results.json --percent 80 --out offer-plan.json
@@ -76,6 +80,7 @@ src/
   kijiji/listings.ts  search results and listing details
   kijiji/offers.ts    offer pricing and message drafting
   kijiji/messages.ts  the send flow
+  kijiji/post.ts      creating a listing from a draft file
   kijiji/selectors.ts every DOM selector, with fallbacks
 ```
 
@@ -83,7 +88,17 @@ Kijiji changes its markup regularly. When a command reports it could not find an
 element, update the fallback list in `src/kijiji/selectors.ts` — that file is the
 only place selectors live.
 
+## Posting
+
+`post` takes a JSON file with one draft or an array of them (see
+`listing.example.json`): `title`, `description`, `category`, `location`, `price`
+(a number, `"free"` or `"contact"`), optional `photos` paths, and an optional
+`account`. The category string is typed into Kijiji's picker and the first
+suggestion is taken, so word it the way Kijiji labels it. The whole form is
+filled and shown to you before anything is published.
+
 ## Notes
 
 Use this on accounts you own, within Kijiji's terms. It is an assistant for
-browsing and for conversations you would have anyway, not a bulk-messaging tool.
+browsing, for conversations you would have anyway, and for listing items you
+actually have — not a bulk-messaging tool.

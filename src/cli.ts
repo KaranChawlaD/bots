@@ -10,6 +10,7 @@ import { ensureLoggedIn, isLoggedIn } from "./kijiji/auth.js";
 import { search, view, type ListingSummary } from "./kijiji/listings.js";
 import { draftOffer, type OfferInput } from "./kijiji/offers.js";
 import { sendMessage } from "./kijiji/messages.js";
+import { postListing, validateDraft, type ListingDraft } from "./kijiji/post.js";
 import { sendHistory } from "./safety.js";
 
 const log = logger("cli");
@@ -34,6 +35,8 @@ Commands
   plan-offers <results.json>     Turn "search --json" output into an offer plan you can edit
             [--percent 85] [--amount N] [--floor N] [--note "..."]
             [--account a,b] [--out plan.json]
+  post    <listing.json>         Create a listing for something you're selling
+            [--account a] [--dry-run] [--yes]
   run     <plan.json>            Work through a plan of per-account message tasks
             [--dry-run] [--yes]
   history                        Show what each account has already messaged
@@ -77,6 +80,8 @@ async function main(): Promise<number> {
       return commandOffer(settings, args, showViewer);
     case "plan-offers":
       return commandPlanOffers(settings, args);
+    case "post":
+      return commandPost(settings, args, showViewer);
     case "run":
       return commandRun(settings, args, showViewer);
     case "history":
@@ -326,6 +331,47 @@ function flattenListings(
     }
   }
   return listings;
+}
+
+/**
+ * Posts one or more listing drafts. A draft may name its own account;
+ * otherwise --account (or the first configured account) is used.
+ */
+async function commandPost(
+  settings: Settings,
+  args: ParsedArgs,
+  showViewer: boolean,
+): Promise<number> {
+  const draftPath = args.positionals[0];
+  if (!draftPath) throw new Error("post needs a path to a listing JSON file.");
+  const parsed = JSON.parse(readFileSync(draftPath, "utf8")) as ListingDraft | ListingDraft[];
+  const drafts = Array.isArray(parsed) ? parsed : [parsed];
+  for (const draft of drafts) validateDraft(draft);
+
+  const fallback = singleAccount(settings, args);
+  const dryRun = flagBool(args, "dry-run");
+  const autoApprove = flagBool(args, "yes");
+
+  let posted = 0;
+  for (const [index, draft] of drafts.entries()) {
+    const account = draft.account ? selectAccounts(settings, [draft.account])[0]! : fallback;
+    log.info(`listing ${index + 1}/${drafts.length} — ${account.id} → "${draft.title}"`);
+    try {
+      const result = await withAgent(account, { showViewer }, (agent) =>
+        postListing(agent, draft, { dryRun, autoApprove }),
+      );
+      if (result.status === "posted") {
+        posted += 1;
+        success(`  live: ${result.url}`);
+      } else {
+        log.warn(`  not published (${dryRun ? "dry run" : "declined"})`);
+      }
+    } catch (error) {
+      log.error(`  failed: ${describe(error)}`);
+    }
+  }
+  success(`Posting finished: ${posted}/${drafts.length} live.`);
+  return posted === drafts.length ? 0 : 1;
 }
 
 async function commandRun(
