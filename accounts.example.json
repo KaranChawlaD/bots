@@ -1,0 +1,23 @@
+{
+  "accounts": [
+    {
+      "id": "primary",
+      "email": "you@example.com",
+      "passwordEnv": "KIJIJI_PASSWORD_PRIMARY",
+      "label": "Main account",
+      "region": "ord"
+    },
+    {
+      "id": "secondary",
+      "email": "you+sell@example.com",
+      "passwordEnv": "KIJIJI_PASSWORD_SECONDARY",
+      "totpSecretEnv": "KIJIJI_TOTP_SECONDARY",
+      "label": "Selling account"
+    }
+  ],
+  "limits": {
+    "minSecondsBetweenMessages": 90,
+    "maxMessagesPerAccountPerDay": 15,
+    "maxConcurrentAgents": 3
+  }
+}

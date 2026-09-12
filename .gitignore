@@ -1,0 +1,6 @@
+node_modules/
+.env
+accounts.json
+profiles/
+data/
+*.log

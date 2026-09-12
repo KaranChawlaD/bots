@@ -1,0 +1,12 @@
+[
+  {
+    "account": "primary",
+    "listing": "https://www.kijiji.ca/v-view-details.html?adId=1700000000",
+    "message": "Hi! Is this still available? I'm in the area this week and can pick up today."
+  },
+  {
+    "account": "secondary",
+    "listing": "1700000001",
+    "message": "Hello — interested in this. Would you take $180 cash on pickup tomorrow?"
+  }
+]
