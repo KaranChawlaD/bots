@@ -16,6 +16,8 @@ export const selectors = {
     'button:has-text("Log in")',
   ],
   totpField: ['input[name="code"]', 'input[autocomplete="one-time-code"]', 'input[name="otp"]'],
+  /** Whatever Kijiji says when it refuses a sign-in or a verification code. */
+  loginError: ['.alert-danger', '[role="alert"]', '[class*="errorMessage"]', "#status"],
   /** Kijiji's own step: it mails a code instead of using an authenticator app. */
   emailCodeRequest: [
     'form#fm1 button:has-text("Send Code")',
