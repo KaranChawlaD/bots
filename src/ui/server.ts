@@ -8,9 +8,9 @@ import { runAcrossAgents } from "../agents/pool.js";
 import { describe, withAgent } from "../steel/agent.js";
 import { loadProfile, profileAge } from "../steel/profiles.js";
 import { ensureLoggedIn, isLoggedIn } from "../kijiji/auth.js";
-import { myAds, search, view, type ListingSummary } from "../kijiji/listings.js";
+import { search, view } from "../kijiji/listings.js";
 import { draftOffer, type OfferInput } from "../kijiji/offers.js";
-import { findComparables, type CompOptions } from "../kijiji/comps.js";
+import { findComparables, type Comparable, type CompOptions } from "../kijiji/comps.js";
 import { sendMessage } from "../kijiji/messages.js";
 import { postListing, validateDraft, type ListingDraft } from "../kijiji/post.js";
 import { sendHistory } from "../safety.js";
@@ -241,22 +241,6 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
       return override ? bool(override, "priceMatch") : priceMatch;
     };
 
-    // Clients sell similar items, so the other agents' own ads are comparables
-    // too. Every account's ads are read once up front — but only when at least
-    // one draft will cite comps, since each read is a separate browser.
-    const ownAds = new Map<string, ListingSummary[]>();
-    if (work.some((item) => wantsComps(item.account.id))) {
-      for (const owner of settings.accounts) {
-        try {
-          ownAds.set(owner.id, await withAgent(owner, { showViewer: true }, (agent) => myAds(agent)));
-        } catch (error) {
-          log.warn(`[${owner.id}] could not read own ads for comparables: ${describe(error)}`);
-        }
-      }
-    }
-    const othersAds = (accountId: string): ListingSummary[] =>
-      [...ownAds.entries()].filter(([id]) => id !== accountId).flatMap(([, ads]) => ads);
-
     const outcomes: Array<Record<string, unknown>> = [];
     for (const [index, item] of work.entries()) {
       const { target, account } = item;
@@ -266,11 +250,17 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
           const listing = await view(agent, target);
           const override = overrideFor(account.id);
           const citesComps = wantsComps(account.id);
-          const comparables = citesComps
-            ? await findComparables(agent, listing, { ...comps, extraPool: othersAds(account.id) })
-            : [];
-          if (citesComps && comparables.length === 0) {
-            log.warn("  no cheaper comparable listings found — offering off the ask instead");
+          // Comps are a nice-to-have: a failed hunt must not sink the draft.
+          let comparables: Comparable[] = [];
+          if (citesComps) {
+            try {
+              comparables = await findComparables(agent, listing, comps);
+              if (comparables.length === 0) {
+                log.warn("  no cheaper comparable listings found — offering off the ask instead");
+              }
+            } catch (error) {
+              log.warn(`  comp hunt failed (${describe(error)}) — offering off the ask instead`);
+            }
           }
           const offer = draftOffer(listing, {
             ...offerInputFor(input, override),

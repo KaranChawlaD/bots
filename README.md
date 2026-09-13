@@ -125,14 +125,14 @@ and every message still goes out from the account of the person it belongs to.
 `--price-match` has the agent search Kijiji for the same item, keep the listings
 that are genuinely cheaper, and quote them with their prices and links so the
 seller can check them. Comps hunt all of Canada — the point is gauging the
-market, not the neighbourhood — and the other configured accounts' own active
-ads are mixed into the pool, since clients often sell similar items. The offer
-is then the cheapest of those (still bounded by `--floor`/`--ceiling`), rather
-than a percentage of the ask.
+market, not the neighbourhood. The offer is then the cheapest of those (still
+bounded by `--floor`/`--ceiling`), rather than a percentage of the ask.
 
 Comparables are filtered before they are cited: a real price, cheaper than the
-ask, at least half the title words in common, and no lower than `--comps-min-ratio`
-(0.5) of the ask so accessories and parts don't get quoted as the same item. If
+ask, a clear majority of the title words in common, and no lower than
+`--comps-min-ratio` (0.5) of the ask so accessories and parts don't get quoted
+as the same item. The run log reports how many pool candidates were dropped and
+why, so an empty comp list is explainable. If
 nothing survives the filter, the offer falls back to the percentage and cites
 nothing. Use `--comps-query` when the title is worded oddly, and `--comps` to
 change how many are quoted (3).
