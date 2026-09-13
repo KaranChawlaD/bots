@@ -93,6 +93,10 @@ export function startJob(type: string, params: Record<string, unknown>): Promise
   return api("/api/jobs", { method: "POST", body: JSON.stringify({ type, params }) });
 }
 
+export function listJobs(): Promise<{ jobs: Job[] }> {
+  return api("/api/jobs");
+}
+
 export function getJob(id: string): Promise<Job> {
   return api(`/api/jobs/${id}`);
 }

@@ -37,6 +37,7 @@ export async function search(agent: Agent, query: SearchQuery): Promise<ListingS
     await dismissOverlays(page);
     const cards = await scrapeResultPage(page);
     if (cards.length === 0) break;
+    const before = results.length;
     for (const listing of cards) {
       if (seen.has(listing.url)) continue;
       seen.add(listing.url);
@@ -44,6 +45,18 @@ export async function search(agent: Agent, query: SearchQuery): Promise<ListingS
       if (results.length >= limit) break;
     }
     if (results.length >= limit) break;
+    // Kijiji pads later pages with reshuffled or out-of-band results rather
+    // than ever serving an empty one — once a page adds nothing new, crawling
+    // on just burns requests until the IP gets 429'd.
+    if (results.length === before) break;
+    // Sorted price-ascending, a page whose cheapest listing already exceeds
+    // the ceiling means nothing later can qualify.
+    if (query.sort === "priceAsc" && query.maxPrice !== undefined) {
+      const prices = cards
+        .map((card) => card.price)
+        .filter((price): price is number => price !== undefined);
+      if (prices.length > 0 && Math.min(...prices) > query.maxPrice) break;
+    }
   }
 
   log.info(`[${agent.account.id}] "${query.keywords}" → ${results.length} listings`);

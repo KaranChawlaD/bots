@@ -10,7 +10,7 @@ import { loadProfile, profileAge } from "../steel/profiles.js";
 import { ensureLoggedIn, isLoggedIn } from "../kijiji/auth.js";
 import { search, view } from "../kijiji/listings.js";
 import { draftOffer, type OfferInput } from "../kijiji/offers.js";
-import { findComparables, type CompOptions } from "../kijiji/comps.js";
+import { findComparables, type Comparable, type CompOptions } from "../kijiji/comps.js";
 import { sendMessage } from "../kijiji/messages.js";
 import { postListing, validateDraft, type ListingDraft } from "../kijiji/post.js";
 import { sendHistory } from "../safety.js";
@@ -96,6 +96,40 @@ function offerInput(params: Record<string, unknown>): OfferInput {
     ...(num(params, "roundTo") !== undefined ? { roundTo: num(params, "roundTo") } : {}),
     ...(str(params, "note") ? { note: str(params, "note") } : {}),
   };
+}
+
+/**
+ * One account's overrides on top of the shared offer input — a different
+ * percent-of-ask per client, a different floor, its own note. Amount and
+ * percent stay mutually exclusive: whichever the override sets wins.
+ */
+function offerInputFor(base: OfferInput, raw: unknown): OfferInput {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
+  const params = raw as Record<string, unknown>;
+  const merged = { ...base };
+  const amount = num(params, "amount");
+  const percent = num(params, "percent");
+  if (amount !== undefined) {
+    merged.amount = amount;
+    delete merged.percent;
+  } else if (percent !== undefined) {
+    merged.percent = percent;
+    delete merged.amount;
+  }
+  const floor = num(params, "floor");
+  if (floor !== undefined) merged.floor = floor;
+  const ceiling = num(params, "ceiling");
+  if (ceiling !== undefined) merged.ceiling = ceiling;
+  const note = str(params, "note");
+  if (note) merged.note = note;
+  return merged;
+}
+
+/** params.perAgent maps account id → partial offer input. */
+function perAgentParams(params: Record<string, unknown>): Record<string, unknown> {
+  const raw = params.perAgent;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return raw as Record<string, unknown>;
 }
 
 function compOptions(params: Record<string, unknown>): CompOptions {
@@ -184,21 +218,53 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
     const priceMatch = bool(params, "priceMatch");
     const comps = compOptions(params);
     const dryRun = bool(params, "dryRun");
+    // Draft-only mode: the panel reviews each message and sends it as its own
+    // job, so the offer run never sends on its own.
+    const draftOnly = bool(params, "draftOnly");
+    // Every-agent mode: one offer per selected account for each listing, so
+    // the same listing can be offered on by every agent at once.
+    const everyAgent = bool(params, "everyAgent");
+    const perAgent = perAgentParams(params);
+
+    const work = everyAgent
+      ? targets.flatMap((target) => accounts.map((account) => ({ target, account })))
+      : targets.map((target, index) => ({ target, account: accounts[index % accounts.length]! }));
+
+    const overrideFor = (accountId: string): Record<string, unknown> | undefined => {
+      const raw = perAgent[accountId];
+      return raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : undefined;
+    };
+    const wantsComps = (accountId: string): boolean => {
+      const override = overrideFor(accountId);
+      return override ? bool(override, "priceMatch") : priceMatch;
+    };
 
     const outcomes: Array<Record<string, unknown>> = [];
-    for (const [index, target] of targets.entries()) {
-      const account = accounts[index % accounts.length]!;
-      log.info(`offer ${index + 1}/${targets.length} — ${account.id} → ${target}`);
+    for (const [index, item] of work.entries()) {
+      const { target, account } = item;
+      log.info(`offer ${index + 1}/${work.length} — ${account.id} → ${target}`);
       try {
         const outcome = await withAgent(account, { showViewer: true }, async (agent) => {
           const listing = await view(agent, target);
-          const comparables = priceMatch ? await findComparables(agent, listing, comps) : [];
-          if (priceMatch && comparables.length === 0) {
-            log.warn("  no cheaper comparable listings found — offering off the ask instead");
+          const override = overrideFor(account.id);
+          const citesComps = wantsComps(account.id);
+          // Comps are a nice-to-have: a failed hunt must not sink the draft.
+          let comparables: Comparable[] = [];
+          if (citesComps) {
+            try {
+              comparables = await findComparables(agent, listing, comps);
+              if (comparables.length === 0) {
+                log.warn("  no cheaper comparable listings found — offering off the ask instead");
+              }
+            } catch (error) {
+              log.warn(`  comp hunt failed (${describe(error)}) — offering off the ask instead`);
+            }
           }
           const offer = draftOffer(listing, {
-            ...input,
-            priceMatch,
+            ...offerInputFor(input, override),
+            priceMatch: citesComps,
             comparables,
             variant: index,
             ...(account.style ? { style: account.style } : {}),
@@ -207,10 +273,12 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
             `  asking ${listing.priceText || "—"} → offering $${offer.amount}` +
               `${comparables.length > 0 ? `, citing ${comparables.length} cheaper listing(s)` : ""}`,
           );
-          const sent = await sendMessage(agent, listing.url, offer.message, {
-            limits: settings.limits,
-            dryRun,
-          });
+          const sent = draftOnly
+            ? undefined
+            : await sendMessage(agent, listing.url, offer.message, {
+                limits: settings.limits,
+                dryRun,
+              });
           return { offer, sent };
         });
         outcomes.push({
@@ -219,8 +287,8 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
           amount: outcome.offer.amount,
           comparables: outcome.offer.comparables ?? [],
           message: outcome.offer.message,
-          status: outcome.sent.status,
-          ...(outcome.sent.status === "skipped" ? { reason: outcome.sent.reason } : {}),
+          status: outcome.sent ? outcome.sent.status : "drafted",
+          ...(outcome.sent?.status === "skipped" ? { reason: outcome.sent.reason } : {}),
         });
       } catch (error) {
         outcomes.push({ account: account.id, listing: target, status: "failed", reason: describe(error) });
@@ -258,7 +326,10 @@ function jobLabel(request: JobRequest): string {
   if (type === "search") return `search "${str(params, "keywords") ?? ""}"`;
   if (type === "view") return `view ${str(params, "listing") ?? ""}`;
   if (type === "message") return `message ${str(params, "listing") ?? ""}`;
-  if (type === "offer") return `offer on ${lines(params, "listings").length} listing(s)`;
+  if (type === "offer") {
+    const who = ids(params, "accounts")?.join(", ") ?? str(params, "account");
+    return `offer on ${lines(params, "listings").length} listing(s)${who ? ` via ${who}` : ""}`;
+  }
   if (type === "post") return `post "${str(params, "title") ?? ""}"`;
   return type;
 }

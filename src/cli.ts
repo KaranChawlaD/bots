@@ -9,7 +9,7 @@ import { loadProfile, profileAge } from "./steel/profiles.js";
 import { ensureLoggedIn, isLoggedIn } from "./kijiji/auth.js";
 import { search, view, type ListingSummary } from "./kijiji/listings.js";
 import { draftOffer, type OfferInput } from "./kijiji/offers.js";
-import { findComparables, pickComparables, type CompOptions } from "./kijiji/comps.js";
+import { findComparables, pickComparables, type Comparable, type CompOptions } from "./kijiji/comps.js";
 import { sendMessage } from "./kijiji/messages.js";
 import { postListing, validateDraft, type ListingDraft } from "./kijiji/post.js";
 import { sendHistory } from "./safety.js";
@@ -33,7 +33,7 @@ Commands
   offer   <listing-url|adId>...  Draft a price offer per listing and send it
             [--percent 85 | --amount N] [--floor N] [--ceiling N] [--round-to 5]
             [--price-match] [--comps 3] [--comps-query "..."] [--comps-min-ratio 0.5]
-            [--note "..."] [--account a,b] [--dry-run] [--yes]
+            [--note "..."] [--account a,b] [--all-accounts] [--dry-run] [--yes]
   plan-offers <results.json>     Turn "search --json" output into an offer plan you can edit
             [--percent 85] [--amount N] [--floor N] [--note "..."] [--price-match]
             [--comps 3] [--account a,b] [--out plan.json]
@@ -248,8 +248,10 @@ function compOptions(args: ParsedArgs): CompOptions {
 }
 
 /**
- * Offers go out one listing at a time, each from the next account in the
- * rotation, each drafted from that listing's own asking price.
+ * Offers go out one at a time, each drafted from that listing's own asking
+ * price. By default each listing is offered on by the next account in the
+ * rotation; --all-accounts instead drafts one offer per selected account for
+ * every listing, so the same listing can receive an offer from each agent.
  */
 async function commandOffer(
   settings: Settings,
@@ -265,17 +267,29 @@ async function commandOffer(
   const dryRun = flagBool(args, "dry-run");
   const autoApprove = flagBool(args, "yes");
 
+  const work = flagBool(args, "all-accounts")
+    ? targets.flatMap((target) => accounts.map((account) => ({ target, account })))
+    : targets.map((target, index) => ({ target, account: accounts[index % accounts.length]! }));
+
   let sent = 0;
   let skipped = 0;
-  for (const [index, target] of targets.entries()) {
-    const account = accounts[index % accounts.length]!;
-    log.info(`offer ${index + 1}/${targets.length} — ${account.id} → ${target}`);
+  for (const [index, item] of work.entries()) {
+    const { target, account } = item;
+    log.info(`offer ${index + 1}/${work.length} — ${account.id} → ${target}`);
     try {
       const outcome = await withAgent(account, { showViewer }, async (agent) => {
         const listing = await view(agent, target);
-        const comparables = priceMatch ? await findComparables(agent, listing, comps) : [];
-        if (priceMatch && comparables.length === 0) {
-          log.warn("  no cheaper comparable listings found — offering off the ask instead");
+        // Comps are a nice-to-have: a failed hunt must not sink the draft.
+        let comparables: Comparable[] = [];
+        if (priceMatch) {
+          try {
+            comparables = await findComparables(agent, listing, comps);
+            if (comparables.length === 0) {
+              log.warn("  no cheaper comparable listings found — offering off the ask instead");
+            }
+          } catch (error) {
+            log.warn(`  comp hunt failed (${describe(error)}) — offering off the ask instead`);
+          }
         }
         const offer = draftOffer(listing, {
           ...input,

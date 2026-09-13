@@ -124,12 +124,15 @@ and every message still goes out from the account of the person it belongs to.
 
 `--price-match` has the agent search Kijiji for the same item, keep the listings
 that are genuinely cheaper, and quote them with their prices and links so the
-seller can check them. The offer is then the cheapest of those (still bounded by
-`--floor`/`--ceiling`), rather than a percentage of the ask.
+seller can check them. Comps hunt all of Canada — the point is gauging the
+market, not the neighbourhood. The offer is then the cheapest of those (still
+bounded by `--floor`/`--ceiling`), rather than a percentage of the ask.
 
 Comparables are filtered before they are cited: a real price, cheaper than the
-ask, at least half the title words in common, and no lower than `--comps-min-ratio`
-(0.5) of the ask so accessories and parts don't get quoted as the same item. If
+ask, a clear majority of the title words in common, and no lower than
+`--comps-min-ratio` (0.5) of the ask so accessories and parts don't get quoted
+as the same item. The run log reports how many pool candidates were dropped and
+why, so an empty comp list is explainable. If
 nothing survives the filter, the offer falls back to the percentage and cites
 nothing. Use `--comps-query` when the title is worded oddly, and `--comps` to
 change how many are quoted (3).
@@ -142,9 +145,9 @@ the search file as the comparables.
 Kijiji publishes no public developer API, so everything here is a real browser
 driven through Steel:
 
-- **Search** goes straight to `kijiji.ca/b-canada/<keywords>/k0l0` with `sort` and
-  `price` parameters, paging through `/page-N` — no dependence on the header
-  search box.
+- **Search** goes straight to `kijiji.ca/b-city-of-toronto/<keywords>/k0l1700273`
+  with `sort` and `price` parameters, paging through `/page-N` — no dependence
+  on the header search box. Searches only cover the City of Toronto.
 - **Listing details** are read from the page's schema.org JSON-LD first, with DOM
   selectors as the fallback, so a class rename doesn't blank out a listing.
 - **Sign-in** starts at `/consumer/login`, which hands off to `id.kijiji.ca`.

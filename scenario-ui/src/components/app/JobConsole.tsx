@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TextInput } from "@/components/ui/field";
 import ResultView from "@/components/app/ResultView";
-import { answerJob, type Job } from "@/lib/api";
+import { answerJob, type Job, type SendRecord } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const statusStyle: Record<Job["status"], string> = {
@@ -72,7 +72,25 @@ function Prompt({ job, onAnswered }: { job: Job; onAnswered: () => void }) {
   );
 }
 
-export default function JobConsole({ job, onPromptAnswered }: { job?: Job; onPromptAnswered: () => void }) {
+export default function JobConsole({
+  job,
+  jobs,
+  history,
+  onSelectJob,
+  onPromptAnswered,
+  onOpenListing,
+  onDraftOffer,
+  onSendOffer,
+}: {
+  job?: Job;
+  jobs?: Job[];
+  history?: SendRecord[];
+  onSelectJob?: (job: Job) => void;
+  onPromptAnswered: () => void;
+  onOpenListing?: (url: string) => void;
+  onDraftOffer?: (url: string) => void;
+  onSendOffer?: (draft: { listing: string; text: string; account?: string }) => void;
+}) {
   return (
     <Card className="flex h-full flex-col">
       <CardHeader>
@@ -107,7 +125,45 @@ export default function JobConsole({ job, onPromptAnswered }: { job?: Job; onPro
         )}
 
         {job?.status === "failed" && <p className="text-sm text-destructive">{job.error}</p>}
-        {job?.status === "done" && <ResultView result={job.result} />}
+        {job?.status === "done" && (
+          <ResultView
+            result={job.result}
+            history={history}
+            onOpenListing={onOpenListing}
+            onDraftOffer={onDraftOffer}
+            onSendOffer={onSendOffer}
+          />
+        )}
+
+        {jobs && jobs.length > 0 && (
+          <div className="space-y-1 border-t border-border pt-3">
+            <p className="text-xs font-medium text-muted-foreground">Recent runs</p>
+            <ul className="space-y-1">
+              {jobs.map((entry) => (
+                <li key={entry.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelectJob?.(entry)}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted/60",
+                      entry.id === job?.id ? "bg-muted/60" : "",
+                    )}
+                  >
+                    <span className="min-w-0 truncate text-foreground/80">{entry.label}</span>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                        statusStyle[entry.status],
+                      )}
+                    >
+                      {entry.status}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

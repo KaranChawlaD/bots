@@ -65,6 +65,16 @@ function tokens(text: string): Set<string> {
   return new Set(compQuery(text).split(" ").filter(Boolean));
 }
 
+/** Why pooled listings were dropped — surfaced so an empty comp list is explainable. */
+export interface CompDropStats {
+  noPrice: number;
+  isTarget: number;
+  notCheaper: number;
+  tooCheap: number;
+  duplicate: number;
+  weakTitle: number;
+}
+
 /**
  * Picks the genuinely comparable, genuinely cheaper listings out of a pool.
  * Everything cited has to be a live listing the seller can check themselves,
@@ -75,25 +85,34 @@ export function pickComparables(
   pool: ListingSummary[],
   target: Pick<ListingSummary, "title" | "price" | "url" | "id">,
   options: CompOptions = {},
+  dropped?: CompDropStats,
 ): Comparable[] {
   const ask = target.price;
   if (ask === undefined) return [];
   const minPrice = ask * (options.minRatio ?? 0.5);
   const wanted = tokens(options.query ?? target.title);
-  // Half the words is too loose: "carrying case for Nintendo Switch" shares two
-  // of "nintendo switch dock" and is not the same item.
-  const needed = Math.max(1, Math.ceil(wanted.size * 0.75));
+  // Require a clear majority of the target's identifying words — half was too
+  // loose ("carrying case for Nintendo Switch" shares two of "nintendo switch
+  // dock"), three-quarters was too tight ("Switch dock charger" is the same
+  // item under different phrasing).
+  const needed = Math.max(wanted.size >= 2 ? 2 : 1, Math.ceil(wanted.size * 0.6));
+  const drop = (key: keyof CompDropStats): false => {
+    if (dropped) dropped[key] += 1;
+    return false;
+  };
 
   const seen = new Set<string>();
   return pool
     .filter((listing) => {
-      if (listing.price === undefined) return false;
-      if (listing.url === target.url) return false;
-      if (target.id && listing.id === target.id) return false;
-      if (listing.price >= ask || listing.price < minPrice) return false;
-      if (seen.has(listing.url)) return false;
+      if (listing.price === undefined) return drop("noPrice");
+      if (listing.url === target.url || (target.id && listing.id === target.id)) {
+        return drop("isTarget");
+      }
+      if (listing.price >= ask) return drop("notCheaper");
+      if (listing.price < minPrice) return drop("tooCheap");
+      if (seen.has(listing.url)) return drop("duplicate");
       const overlap = [...tokens(listing.title)].filter((word) => wanted.has(word)).length;
-      if (overlap < needed) return false;
+      if (overlap < needed) return drop("weakTitle");
       seen.add(listing.url);
       return true;
     })
@@ -124,16 +143,32 @@ export async function findComparables(
     return [];
   }
   const minRatio = options.minRatio ?? 0.5;
+  // Price-matching gauges the market, not the neighbourhood: comps hunt all
+  // of Canada rather than the Toronto-scoped browsing search.
   const pool = await search(agent, {
     keywords,
     sort: "priceAsc",
     minPrice: Math.ceil(target.price * minRatio),
     maxPrice: Math.floor(target.price) - 1,
     limit: options.scan ?? 25,
+    location: "canada",
   });
-  const comps = pickComparables(pool, target, options);
+  const dropped: CompDropStats = {
+    noPrice: 0,
+    isTarget: 0,
+    notCheaper: 0,
+    tooCheap: 0,
+    duplicate: 0,
+    weakTitle: 0,
+  };
+  const comps = pickComparables(pool, target, options, dropped);
+  const reasons = Object.entries(dropped)
+    .filter(([, count]) => count > 0)
+    .map(([reason, count]) => `${count} ${reason}`)
+    .join(", ");
   log.info(
-    `[${agent.account.id}] "${keywords}" → ${comps.length} cheaper comparable(s) under $${target.price}`,
+    `[${agent.account.id}] "${keywords}" → ${comps.length} cheaper comparable(s) under ` +
+      `$${target.price} (pool of ${pool.length}${reasons ? `, dropped: ${reasons}` : ""})`,
   );
   return comps;
 }

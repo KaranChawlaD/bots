@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { Checkbox, Field, Row, TextArea, TextInput } from "@/components/ui/field";
+import { Checkbox, Field, Row, Select, TextArea, TextInput } from "@/components/ui/field";
 import ParticleButton from "@/components/kokonutui/particle-button";
+import type { AccountState } from "@/lib/api";
 
 export default function PostForm({
   busy,
+  accounts,
   onSubmit,
 }: {
   busy: boolean;
+  accounts: AccountState[];
   onSubmit: (params: Record<string, unknown>) => void;
 }) {
   const [title, setTitle] = useState("");
@@ -17,13 +20,15 @@ export default function PostForm({
   const [category, setCategory] = useState("");
   const [photos, setPhotos] = useState("");
   const [dryRun, setDryRun] = useState(true);
+  const [account, setAccount] = useState("");
+  const chosen = accounts.some((a) => a.id === account) ? account : (accounts[0]?.id ?? "");
 
   return (
     <form
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({ title, description, price, location, locationId, category, photos, dryRun });
+        onSubmit({ title, description, price, location, locationId, category, photos, dryRun, account: chosen });
       }}
     >
       <Field label="Title">
@@ -64,8 +69,17 @@ export default function PostForm({
       <Field label="Photos (paths, one per line)">
         <TextArea rows={2} value={photos} onChange={(e) => setPhotos(e.target.value)} />
       </Field>
+      <Field label="Post as" hint="The ad is published on one account — pick which.">
+        <Select value={chosen} onChange={(e) => setAccount(e.target.value)}>
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.label ?? a.id} — {a.email}
+            </option>
+          ))}
+        </Select>
+      </Field>
       <Checkbox label="Dry run" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
-      <ParticleButton type="submit" disabled={busy || !title.trim() || !category.trim()}>
+      <ParticleButton type="submit" disabled={busy || !title.trim() || !category.trim() || !chosen}>
         Fill the ad form
       </ParticleButton>
       <p className="text-xs text-muted-foreground">Publishing asks for your approval first.</p>
