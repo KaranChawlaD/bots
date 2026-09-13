@@ -24,13 +24,21 @@ function keywordSlug(keywords: string): string {
 }
 
 /**
- * Keyword search across all categories in Canada:
- * https://www.kijiji.ca/b-canada/<keywords>/k0l0 , page N as a "/page-N"
- * segment in front of the trailing "k0l0".
+ * Searches only cover the City of Toronto — the "l1700273" location id in
+ * any Kijiji Toronto URL.
+ */
+const SEARCH_LOCATION = { path: "b-city-of-toronto", locationId: "l1700273" } as const;
+
+/**
+ * Keyword search across all categories in Toronto:
+ * https://www.kijiji.ca/b-city-of-toronto/<keywords>/k0l1700273 , page N as a
+ * "/page-N" segment in front of the trailing "k0l1700273".
  */
 export function searchUrl(query: SearchQuery, pageNumber = 1): string {
   const page = pageNumber > 1 ? `/page-${pageNumber}` : "";
-  const url = new URL(`${KIJIJI_BASE}/b-canada/${keywordSlug(query.keywords)}${page}/k0l0`);
+  const url = new URL(
+    `${KIJIJI_BASE}/${SEARCH_LOCATION.path}/${keywordSlug(query.keywords)}${page}/k0${SEARCH_LOCATION.locationId}`,
+  );
   url.searchParams.set("sort", query.sort ?? "dateDesc");
   if (query.minPrice !== undefined || query.maxPrice !== undefined) {
     url.searchParams.set("price", `${query.minPrice ?? 0}__${query.maxPrice ?? ""}`);

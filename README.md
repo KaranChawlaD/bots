@@ -142,9 +142,9 @@ the search file as the comparables.
 Kijiji publishes no public developer API, so everything here is a real browser
 driven through Steel:
 
-- **Search** goes straight to `kijiji.ca/b-canada/<keywords>/k0l0` with `sort` and
-  `price` parameters, paging through `/page-N` — no dependence on the header
-  search box.
+- **Search** goes straight to `kijiji.ca/b-city-of-toronto/<keywords>/k0l1700273`
+  with `sort` and `price` parameters, paging through `/page-N` — no dependence
+  on the header search box. Searches only cover the City of Toronto.
 - **Listing details** are read from the page's schema.org JSON-LD first, with DOM
   selectors as the fallback, so a class rename doesn't blank out a listing.
 - **Sign-in** starts at `/consumer/login`, which hands off to `id.kijiji.ca`.
