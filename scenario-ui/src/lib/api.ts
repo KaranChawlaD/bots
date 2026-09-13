@@ -5,8 +5,9 @@
  */
 
 export interface JobLine {
-  time: string;
-  level: string;
+  at: string;
+  level: "info" | "warn" | "error" | "debug" | "success";
+  scope: string;
   message: string;
 }
 
@@ -30,6 +31,33 @@ export interface Job {
   finishedAt?: string;
 }
 
+export interface AccountState {
+  id: string;
+  email: string;
+  label?: string;
+  session: string;
+  signedIn: boolean;
+}
+
+export interface SendRecord {
+  sentAt: string;
+  accountId: string;
+  listingUrl: string;
+  preview: string;
+}
+
+export interface Limits {
+  minSecondsBetweenMessages: number;
+  maxMessagesPerAccountPerDay: number;
+  maxConcurrentAgents: number;
+}
+
+export interface AppState {
+  accounts: AccountState[];
+  limits: Limits;
+  history: SendRecord[];
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -45,7 +73,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export function getAuth(): Promise<{ passwordRequired: boolean }> {
+export function getAuth(): Promise<{ passwordRequired: boolean; authed: boolean }> {
   return api("/api/auth");
 }
 
@@ -55,6 +83,10 @@ export async function login(password: string): Promise<void> {
 
 export async function logout(): Promise<void> {
   await api("/api/logout", { method: "POST" });
+}
+
+export function getState(): Promise<AppState> {
+  return api("/api/state");
 }
 
 export function startJob(type: string, params: Record<string, unknown>): Promise<Job> {
@@ -78,7 +110,7 @@ export async function runJob(
   let job = await startJob(type, params);
   onUpdate?.(job);
   while (job.status === "queued" || job.status === "running" || job.status === "waiting") {
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await new Promise((resolve) => setTimeout(resolve, 900));
     job = await getJob(job.id);
     onUpdate?.(job);
   }

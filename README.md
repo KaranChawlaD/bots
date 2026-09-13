@@ -75,6 +75,12 @@ ad goes out — appears as a prompt in the page instead.
 
 One job runs at a time, since each one opens cloud browsers you pay for.
 
+The panel's UI lives in `scenario-ui/` (a small React app); `npm run ui` builds
+it and starts the API server (`src/ui/server.ts`) that serves it. To iterate on
+the UI itself with hot reload, run `npm run ui` in one terminal and `npm run
+ui:dev` in another — the dev server on port 5174 proxies `/api` to the one
+already running on 5173.
+
 **Password.** Set `UI_PASSWORD` in `.env` and the panel asks for it. Signing in
 sets a cookie signed with a key generated at startup, so restarting the server
 signs every browser out, and wrong guesses lock out for a minute after five

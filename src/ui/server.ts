@@ -18,16 +18,27 @@ import { answerJob, getJob, listJobs, startJob } from "./jobs.js";
 import { isAuthed, login, logout, passwordRequired } from "./auth.js";
 
 const log = logger("ui");
-const webRoot = resolve(projectRoot, "web");
+const webRoot = resolve(projectRoot, "scenario-ui/dist");
 
-/** Reachable without a session: the login page and what it needs to render. */
-const publicPaths = new Set(["/login", "/login.html", "/styles.css", "/api/login"]);
+/**
+ * The UI is a single-page app: the static shell (HTML/JS/CSS) carries no
+ * account data, so it's served to anyone. It calls /api/auth on load and
+ * renders its own password gate — only the /api/* routes below that touch
+ * account data are gated by isAuthed.
+ */
+const publicPaths = new Set(["/api/login", "/api/auth"]);
 
 const mimeTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".json": "application/json; charset=utf-8",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".map": "application/json; charset=utf-8",
 };
 
 interface JobRequest {
@@ -323,22 +334,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     return;
   }
 
-  if (!publicPaths.has(path) && !isAuthed(req)) {
-    if (path.startsWith("/api/")) {
-      sendJson(res, 401, { error: "sign in" });
-      return;
-    }
-    res.writeHead(302, { location: "/login" });
-    res.end();
-    return;
-  }
-  if (req.method === "GET" && path === "/login") {
-    await serveStatic(isAuthed(req) ? "/" : "/login.html", res);
+  if (path.startsWith("/api/") && !publicPaths.has(path) && !isAuthed(req)) {
+    sendJson(res, 401, { error: "sign in" });
     return;
   }
 
   if (req.method === "GET" && path === "/api/auth") {
-    sendJson(res, 200, { passwordRequired: passwordRequired() });
+    sendJson(res, 200, { passwordRequired: passwordRequired(), authed: isAuthed(req) });
     return;
   }
 

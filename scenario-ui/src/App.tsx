@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import PasswordGate from "@/components/app/PasswordGate";
-import ScenarioBoard from "@/components/app/ScenarioBoard";
+import ControlPanel from "@/components/app/ControlPanel";
 import { getAuth, logout } from "@/lib/api";
 
 type AuthState = "checking" | "signed-in" | "needs-password";
@@ -11,9 +11,9 @@ export default function App() {
 
   useEffect(() => {
     getAuth()
-      .then(({ passwordRequired }) => {
+      .then(({ passwordRequired, authed }) => {
         setPasswordRequired(passwordRequired);
-        setAuth(passwordRequired ? "needs-password" : "signed-in");
+        setAuth(passwordRequired && !authed ? "needs-password" : "signed-in");
       })
       .catch(() => setAuth("needs-password"));
   }, []);
@@ -25,7 +25,7 @@ export default function App() {
   }
 
   return (
-    <ScenarioBoard
+    <ControlPanel
       onSignOut={
         passwordRequired
           ? async () => {

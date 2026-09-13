@@ -31,7 +31,7 @@ export default function PasswordGate({ onSignedIn }: { onSignedIn: () => void })
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       >
         <LiquidGlassCard className="w-80 border border-white/10">
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Scenario Room</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Kijiji Agents</p>
           <h1 className="mt-1 text-lg font-semibold">Sign in to continue</h1>
           <form className="mt-4 space-y-3" onSubmit={submit}>
             <input

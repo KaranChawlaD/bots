@@ -11,7 +11,9 @@
     "kijiji": "tsx src/cli.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "ui": "tsx src/ui/server.ts"
+    "ui:build": "npm --prefix scenario-ui install --no-fund --no-audit && npm --prefix scenario-ui run build",
+    "ui:dev": "npm --prefix scenario-ui run dev",
+    "ui": "npm run ui:build && tsx src/ui/server.ts"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
