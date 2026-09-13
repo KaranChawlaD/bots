@@ -10,6 +10,8 @@ export interface SearchQuery {
   sort?: "dateDesc" | "priceAsc" | "priceDesc";
   /** Max cards to collect across pages. */
   limit?: number;
+  /** Toronto listings by default; "canada" hunts nationwide. */
+  location?: "toronto" | "canada";
 }
 
 /** Keyword segment of a search URL: "PS5 controller" -> "ps5-controller". */
@@ -24,20 +26,24 @@ function keywordSlug(keywords: string): string {
 }
 
 /**
- * Searches only cover the City of Toronto — the "l1700273" location id in
- * any Kijiji Toronto URL.
+ * Searches cover the City of Toronto ("l1700273") unless a caller is gauging
+ * prices — comparable-hunting looks nationwide ("l0", all of Canada).
  */
-const SEARCH_LOCATION = { path: "b-city-of-toronto", locationId: "l1700273" } as const;
+const LOCATIONS = {
+  toronto: { path: "b-city-of-toronto", locationId: "l1700273" },
+  canada: { path: "b-canada", locationId: "l0" },
+} as const;
 
 /**
- * Keyword search across all categories in Toronto:
+ * Keyword search across all categories:
  * https://www.kijiji.ca/b-city-of-toronto/<keywords>/k0l1700273 , page N as a
- * "/page-N" segment in front of the trailing "k0l1700273".
+ * "/page-N" segment in front of the trailing "k0l<locationId>".
  */
 export function searchUrl(query: SearchQuery, pageNumber = 1): string {
   const page = pageNumber > 1 ? `/page-${pageNumber}` : "";
+  const location = LOCATIONS[query.location ?? "toronto"];
   const url = new URL(
-    `${KIJIJI_BASE}/${SEARCH_LOCATION.path}/${keywordSlug(query.keywords)}${page}/k0${SEARCH_LOCATION.locationId}`,
+    `${KIJIJI_BASE}/${location.path}/${keywordSlug(query.keywords)}${page}/k0${location.locationId}`,
   );
   url.searchParams.set("sort", query.sort ?? "dateDesc");
   if (query.minPrice !== undefined || query.maxPrice !== undefined) {

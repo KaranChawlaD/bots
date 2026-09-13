@@ -24,6 +24,11 @@ export interface CompOptions {
    * usually accessories, parts or a different model rather than a real comp.
    */
   minRatio?: number;
+  /**
+   * Extra listings mixed into the pool before filtering — e.g. the other
+   * agents' own active ads when clients sell similar items.
+   */
+  extraPool?: ListingSummary[];
 }
 
 const stopWords = new Set([
@@ -124,13 +129,19 @@ export async function findComparables(
     return [];
   }
   const minRatio = options.minRatio ?? 0.5;
-  const pool = await search(agent, {
-    keywords,
-    sort: "priceAsc",
-    minPrice: Math.ceil(target.price * minRatio),
-    maxPrice: Math.floor(target.price) - 1,
-    limit: options.scan ?? 25,
-  });
+  // Price-matching gauges the market, not the neighbourhood: comps hunt all
+  // of Canada, plus whatever extra pool the caller mixed in.
+  const pool = [
+    ...(options.extraPool ?? []),
+    ...(await search(agent, {
+      keywords,
+      sort: "priceAsc",
+      minPrice: Math.ceil(target.price * minRatio),
+      maxPrice: Math.floor(target.price) - 1,
+      limit: options.scan ?? 25,
+      location: "canada",
+    })),
+  ];
   const comps = pickComparables(pool, target, options);
   log.info(
     `[${agent.account.id}] "${keywords}" → ${comps.length} cheaper comparable(s) under $${target.price}`,

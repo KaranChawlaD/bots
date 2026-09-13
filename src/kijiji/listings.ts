@@ -3,7 +3,13 @@ import type { Agent } from "../steel/agent.js";
 import { logger } from "../log.js";
 import { dismissOverlays, findFirst, open, textOf } from "./page-utils.js";
 import { selectors } from "./selectors.js";
-import { listingIdFromUrl, listingUrl, searchUrl, type SearchQuery } from "./urls.js";
+import {
+  KIJIJI_BASE,
+  listingIdFromUrl,
+  listingUrl,
+  searchUrl,
+  type SearchQuery,
+} from "./urls.js";
 
 const log = logger("listings");
 
@@ -91,6 +97,52 @@ async function scrapeResultPage(page: Page): Promise<ListingSummary[]> {
       url: card.href,
       postedAt: card.postedAt,
     }));
+}
+
+/**
+ * The account's own active ads from /m-my-ads, so an offer can cite the other
+ * clients' live postings as comparables. Only the first page is read — the
+ * point is a representative pool, not an inventory.
+ */
+export async function myAds(agent: Agent): Promise<ListingSummary[]> {
+  const { page } = agent;
+  await open(page, `${KIJIJI_BASE}/m-my-ads/active/1`);
+  await dismissOverlays(page);
+  const raw = await page.evaluate(() => {
+    const anchors = Array.from(
+      document.querySelectorAll<HTMLAnchorElement>('a[href*="adId="], a[href*="/v-"]'),
+    );
+    return anchors
+      .map((anchor) => {
+        const card =
+          anchor.closest("li, tr, article") ?? anchor.closest("div") ?? anchor;
+        return {
+          href: anchor.href,
+          title: (anchor.textContent ?? "").trim(),
+          text: (card.textContent ?? "").replace(/\s+/g, " ").trim(),
+        };
+      })
+      .filter((entry) => entry.href && entry.title);
+  });
+
+  const seen = new Set<string>();
+  const ads: ListingSummary[] = [];
+  for (const entry of raw) {
+    if (seen.has(entry.href)) continue;
+    seen.add(entry.href);
+    const priceText = /\$[\d,]+(?:\.\d{2})?/.exec(entry.text)?.[0] ?? "";
+    ads.push({
+      ...(listingIdFromUrl(entry.href) ? { id: listingIdFromUrl(entry.href) } : {}),
+      title: entry.title,
+      ...(parsePrice(priceText) !== undefined ? { price: parsePrice(priceText) } : {}),
+      priceText,
+      location: "",
+      url: entry.href,
+      postedAt: "",
+    });
+  }
+  log.info(`[${agent.account.id}] ${ads.length} active ad(s) of their own`);
+  return ads;
 }
 
 interface ProductLd {

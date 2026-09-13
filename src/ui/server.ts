@@ -8,7 +8,7 @@ import { runAcrossAgents } from "../agents/pool.js";
 import { describe, withAgent } from "../steel/agent.js";
 import { loadProfile, profileAge } from "../steel/profiles.js";
 import { ensureLoggedIn, isLoggedIn } from "../kijiji/auth.js";
-import { search, view } from "../kijiji/listings.js";
+import { myAds, search, view, type ListingSummary } from "../kijiji/listings.js";
 import { draftOffer, type OfferInput } from "../kijiji/offers.js";
 import { findComparables, type CompOptions } from "../kijiji/comps.js";
 import { sendMessage } from "../kijiji/messages.js";
@@ -230,6 +230,33 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
       ? targets.flatMap((target) => accounts.map((account) => ({ target, account })))
       : targets.map((target, index) => ({ target, account: accounts[index % accounts.length]! }));
 
+    const overrideFor = (accountId: string): Record<string, unknown> | undefined => {
+      const raw = perAgent[accountId];
+      return raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : undefined;
+    };
+    const wantsComps = (accountId: string): boolean => {
+      const override = overrideFor(accountId);
+      return override ? bool(override, "priceMatch") : priceMatch;
+    };
+
+    // Clients sell similar items, so the other agents' own ads are comparables
+    // too. Every account's ads are read once up front — but only when at least
+    // one draft will cite comps, since each read is a separate browser.
+    const ownAds = new Map<string, ListingSummary[]>();
+    if (work.some((item) => wantsComps(item.account.id))) {
+      for (const owner of settings.accounts) {
+        try {
+          ownAds.set(owner.id, await withAgent(owner, { showViewer: true }, (agent) => myAds(agent)));
+        } catch (error) {
+          log.warn(`[${owner.id}] could not read own ads for comparables: ${describe(error)}`);
+        }
+      }
+    }
+    const othersAds = (accountId: string): ListingSummary[] =>
+      [...ownAds.entries()].filter(([id]) => id !== accountId).flatMap(([, ads]) => ads);
+
     const outcomes: Array<Record<string, unknown>> = [];
     for (const [index, item] of work.entries()) {
       const { target, account } = item;
@@ -237,20 +264,17 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
       try {
         const outcome = await withAgent(account, { showViewer: true }, async (agent) => {
           const listing = await view(agent, target);
-          const rawOverride = perAgent[account.id];
-          const override =
-            rawOverride && typeof rawOverride === "object" && !Array.isArray(rawOverride)
-              ? (rawOverride as Record<string, unknown>)
-              : undefined;
-          // Citing comps is per agent: an override decides for that account.
-          const wantsComps = override ? bool(override, "priceMatch") : priceMatch;
-          const comparables = wantsComps ? await findComparables(agent, listing, comps) : [];
-          if (wantsComps && comparables.length === 0) {
+          const override = overrideFor(account.id);
+          const citesComps = wantsComps(account.id);
+          const comparables = citesComps
+            ? await findComparables(agent, listing, { ...comps, extraPool: othersAds(account.id) })
+            : [];
+          if (citesComps && comparables.length === 0) {
             log.warn("  no cheaper comparable listings found — offering off the ask instead");
           }
           const offer = draftOffer(listing, {
             ...offerInputFor(input, override),
-            priceMatch: wantsComps,
+            priceMatch: citesComps,
             comparables,
             variant: index,
             ...(account.style ? { style: account.style } : {}),

@@ -7,7 +7,7 @@ import { runAcrossAgents } from "./agents/pool.js";
 import { Agent, describe, withAgent } from "./steel/agent.js";
 import { loadProfile, profileAge } from "./steel/profiles.js";
 import { ensureLoggedIn, isLoggedIn } from "./kijiji/auth.js";
-import { search, view, type ListingSummary } from "./kijiji/listings.js";
+import { myAds, search, view, type ListingSummary } from "./kijiji/listings.js";
 import { draftOffer, type OfferInput } from "./kijiji/offers.js";
 import { findComparables, pickComparables, type CompOptions } from "./kijiji/comps.js";
 import { sendMessage } from "./kijiji/messages.js";
@@ -271,6 +271,21 @@ async function commandOffer(
     ? targets.flatMap((target) => accounts.map((account) => ({ target, account })))
     : targets.map((target, index) => ({ target, account: accounts[index % accounts.length]! }));
 
+  // The other clients' own ads count as comparables too — gather them once,
+  // only when comps are actually being cited (each read is a browser).
+  const ownAds = new Map<string, ListingSummary[]>();
+  if (priceMatch) {
+    for (const owner of settings.accounts) {
+      try {
+        ownAds.set(owner.id, await withAgent(owner, { showViewer }, (agent) => myAds(agent)));
+      } catch (error) {
+        log.warn(`[${owner.id}] could not read own ads for comparables: ${describe(error)}`);
+      }
+    }
+  }
+  const othersAds = (accountId: string): ListingSummary[] =>
+    [...ownAds.entries()].filter(([id]) => id !== accountId).flatMap(([, ads]) => ads);
+
   let sent = 0;
   let skipped = 0;
   for (const [index, item] of work.entries()) {
@@ -279,7 +294,9 @@ async function commandOffer(
     try {
       const outcome = await withAgent(account, { showViewer }, async (agent) => {
         const listing = await view(agent, target);
-        const comparables = priceMatch ? await findComparables(agent, listing, comps) : [];
+        const comparables = priceMatch
+          ? await findComparables(agent, listing, { ...comps, extraPool: othersAds(account.id) })
+          : [];
         if (priceMatch && comparables.length === 0) {
           log.warn("  no cheaper comparable listings found — offering off the ask instead");
         }
