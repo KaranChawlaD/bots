@@ -4,9 +4,11 @@ import ParticleButton from "@/components/kokonutui/particle-button";
 
 export default function SearchForm({
   busy,
+  accountName,
   onSubmit,
 }: {
   busy: boolean;
+  accountName: string;
   onSubmit: (params: Record<string, unknown>) => void;
 }) {
   const [keywords, setKeywords] = useState("");
@@ -51,7 +53,7 @@ export default function SearchForm({
         </Field>
       </Row>
       <ParticleButton type="submit" disabled={busy || !keywords.trim()}>
-        Search with selected agents
+        Search with {accountName}
       </ParticleButton>
     </form>
   );

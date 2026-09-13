@@ -29,6 +29,16 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState("search");
   const [viewTarget, setViewTarget] = useState("");
+  const [offerDraft, setOfferDraft] = useState<{ listings: string; nonce: number }>({
+    listings: "",
+    nonce: 0,
+  });
+  const [messageDraft, setMessageDraft] = useState<{
+    listing?: string;
+    text?: string;
+    account?: string;
+    nonce: number;
+  }>({ nonce: 0 });
   const [job, setJob] = useState<Job>();
   const [signingIn, setSigningIn] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -61,10 +71,18 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
     pollTimer.current = setTimeout(poll, 900);
   }
 
+  // Searching burns one cloud browser per account for the same results, so it
+  // always runs on the primary account no matter which agents are checked.
+  const searchAccount = state?.accounts.find((a) => a.id === "primary") ?? state?.accounts[0];
+
   async function run(type: string, params: Record<string, unknown>) {
     const picked = typeof params.account === "string" && params.account ? [params.account] : undefined;
     const accounts =
-      SINGLE_ACCOUNT.has(type) && picked ? picked : Array.from(selected);
+      type === "search"
+        ? [searchAccount?.id ?? "primary"]
+        : SINGLE_ACCOUNT.has(type) && picked
+          ? picked
+          : Array.from(selected);
     const started = await startJob(type, { ...params, accounts });
     setJob(started);
     trackJob(started.id);
@@ -122,7 +140,13 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
             <CardContent className="space-y-4 pt-1">
               <TabBar tabs={TABS} active={tab} onChange={setTab} />
 
-              {tab === "search" && <SearchForm busy={busy} onSubmit={(p) => run("search", p)} />}
+              {tab === "search" && (
+                <SearchForm
+                  busy={busy}
+                  accountName={searchAccount?.label ?? searchAccount?.id ?? "primary"}
+                  onSubmit={(p) => run("search", p)}
+                />
+              )}
               {tab === "view" && (
                 <ListingForm
                   busy={busy}
@@ -132,9 +156,22 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
                   onSubmit={(p) => run("view", p)}
                 />
               )}
-              {tab === "offer" && <OfferForm busy={busy} onSubmit={(p) => run("offer", p)} />}
+              {tab === "offer" && (
+                <OfferForm
+                  key={offerDraft.nonce}
+                  busy={busy}
+                  initialListings={offerDraft.listings}
+                  onSubmit={(p) => run("offer", p)}
+                />
+              )}
               {tab === "message" && (
-                <MessageForm busy={busy} accounts={selectedAccounts} onSubmit={(p) => run("message", p)} />
+                <MessageForm
+                  key={messageDraft.nonce}
+                  busy={busy}
+                  accounts={selectedAccounts}
+                  initial={messageDraft}
+                  onSubmit={(p) => run("message", p)}
+                />
               )}
               {tab === "post" && (
                 <PostForm busy={busy} accounts={selectedAccounts} onSubmit={(p) => run("post", p)} />
@@ -149,6 +186,14 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
             onOpenListing={(url) => {
               setViewTarget(url);
               setTab("view");
+            }}
+            onDraftOffer={(url) => {
+              setOfferDraft((prev) => ({ listings: url, nonce: prev.nonce + 1 }));
+              setTab("offer");
+            }}
+            onSendOffer={(draft) => {
+              setMessageDraft((prev) => ({ ...draft, nonce: prev.nonce + 1 }));
+              setTab("message");
             }}
           />
         </div>

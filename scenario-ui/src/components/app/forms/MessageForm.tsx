@@ -6,16 +6,18 @@ import type { AccountState } from "@/lib/api";
 export default function MessageForm({
   busy,
   accounts,
+  initial,
   onSubmit,
 }: {
   busy: boolean;
   accounts: AccountState[];
+  initial?: { listing?: string; text?: string; account?: string };
   onSubmit: (params: Record<string, unknown>) => void;
 }) {
-  const [listing, setListing] = useState("");
-  const [text, setText] = useState("");
+  const [listing, setListing] = useState(initial?.listing ?? "");
+  const [text, setText] = useState(initial?.text ?? "");
   const [dryRun, setDryRun] = useState(true);
-  const [account, setAccount] = useState("");
+  const [account, setAccount] = useState(initial?.account ?? "");
   const chosen = accounts.some((a) => a.id === account) ? account : (accounts[0]?.id ?? "");
 
   return (

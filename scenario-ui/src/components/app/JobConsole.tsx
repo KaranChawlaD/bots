@@ -76,10 +76,14 @@ export default function JobConsole({
   job,
   onPromptAnswered,
   onOpenListing,
+  onDraftOffer,
+  onSendOffer,
 }: {
   job?: Job;
   onPromptAnswered: () => void;
   onOpenListing?: (url: string) => void;
+  onDraftOffer?: (url: string) => void;
+  onSendOffer?: (draft: { listing: string; text: string; account?: string }) => void;
 }) {
   return (
     <Card className="flex h-full flex-col">
@@ -115,7 +119,14 @@ export default function JobConsole({
         )}
 
         {job?.status === "failed" && <p className="text-sm text-destructive">{job.error}</p>}
-        {job?.status === "done" && <ResultView result={job.result} onOpenListing={onOpenListing} />}
+        {job?.status === "done" && (
+          <ResultView
+            result={job.result}
+            onOpenListing={onOpenListing}
+            onDraftOffer={onDraftOffer}
+            onSendOffer={onSendOffer}
+          />
+        )}
       </CardContent>
     </Card>
   );

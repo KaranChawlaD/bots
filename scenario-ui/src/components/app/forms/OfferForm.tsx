@@ -4,12 +4,14 @@ import ParticleButton from "@/components/kokonutui/particle-button";
 
 export default function OfferForm({
   busy,
+  initialListings = "",
   onSubmit,
 }: {
   busy: boolean;
+  initialListings?: string;
   onSubmit: (params: Record<string, unknown>) => void;
 }) {
-  const [listings, setListings] = useState("");
+  const [listings, setListings] = useState(initialListings);
   const [percent, setPercent] = useState("85");
   const [amount, setAmount] = useState("");
   const [floor, setFloor] = useState("");
@@ -17,14 +19,13 @@ export default function OfferForm({
   const [note, setNote] = useState("");
   const [priceMatch, setPriceMatch] = useState(false);
   const [comps, setComps] = useState("3");
-  const [dryRun, setDryRun] = useState(true);
 
   return (
     <form
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({ listings, percent, amount, floor, ceiling, note, priceMatch, comps, dryRun });
+        onSubmit({ listings, percent, amount, floor, ceiling, note, priceMatch, comps, draftOnly: true });
       }}
     >
       <Field label="Listings (one per line)">
@@ -66,13 +67,12 @@ export default function OfferForm({
         <Field label="Comps">
           <TextInput type="number" min={1} value={comps} onChange={(e) => setComps(e.target.value)} />
         </Field>
-        <Checkbox label="Dry run" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
       </Row>
       <ParticleButton type="submit" disabled={busy || !listings.trim()}>
         Draft offers
       </ParticleButton>
       <p className="text-xs text-muted-foreground">
-        Each send is shown to you for approval before it goes out.
+        Drafts land in the run panel on the right — send each one from the Message tab after you approve it.
       </p>
     </form>
   );

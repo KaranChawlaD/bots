@@ -184,6 +184,9 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
     const priceMatch = bool(params, "priceMatch");
     const comps = compOptions(params);
     const dryRun = bool(params, "dryRun");
+    // Draft-only mode: the panel reviews each message and sends it as its own
+    // job, so the offer run never sends on its own.
+    const draftOnly = bool(params, "draftOnly");
 
     const outcomes: Array<Record<string, unknown>> = [];
     for (const [index, target] of targets.entries()) {
@@ -207,10 +210,12 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
             `  asking ${listing.priceText || "—"} → offering $${offer.amount}` +
               `${comparables.length > 0 ? `, citing ${comparables.length} cheaper listing(s)` : ""}`,
           );
-          const sent = await sendMessage(agent, listing.url, offer.message, {
-            limits: settings.limits,
-            dryRun,
-          });
+          const sent = draftOnly
+            ? undefined
+            : await sendMessage(agent, listing.url, offer.message, {
+                limits: settings.limits,
+                dryRun,
+              });
           return { offer, sent };
         });
         outcomes.push({
@@ -219,8 +224,8 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
           amount: outcome.offer.amount,
           comparables: outcome.offer.comparables ?? [],
           message: outcome.offer.message,
-          status: outcome.sent.status,
-          ...(outcome.sent.status === "skipped" ? { reason: outcome.sent.reason } : {}),
+          status: outcome.sent ? outcome.sent.status : "drafted",
+          ...(outcome.sent?.status === "skipped" ? { reason: outcome.sent.reason } : {}),
         });
       } catch (error) {
         outcomes.push({ account: account.id, listing: target, status: "failed", reason: describe(error) });
