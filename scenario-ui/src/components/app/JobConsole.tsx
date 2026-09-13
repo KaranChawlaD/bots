@@ -72,7 +72,15 @@ function Prompt({ job, onAnswered }: { job: Job; onAnswered: () => void }) {
   );
 }
 
-export default function JobConsole({ job, onPromptAnswered }: { job?: Job; onPromptAnswered: () => void }) {
+export default function JobConsole({
+  job,
+  onPromptAnswered,
+  onOpenListing,
+}: {
+  job?: Job;
+  onPromptAnswered: () => void;
+  onOpenListing?: (url: string) => void;
+}) {
   return (
     <Card className="flex h-full flex-col">
       <CardHeader>
@@ -107,7 +115,7 @@ export default function JobConsole({ job, onPromptAnswered }: { job?: Job; onPro
         )}
 
         {job?.status === "failed" && <p className="text-sm text-destructive">{job.error}</p>}
-        {job?.status === "done" && <ResultView result={job.result} />}
+        {job?.status === "done" && <ResultView result={job.result} onOpenListing={onOpenListing} />}
       </CardContent>
     </Card>
   );

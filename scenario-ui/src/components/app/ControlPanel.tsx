@@ -21,10 +21,14 @@ const TABS = [
   { id: "history", label: "History" },
 ];
 
+/** Commands that act through exactly one account — the form picks which. */
+const SINGLE_ACCOUNT = new Set(["view", "message", "post"]);
+
 export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) {
   const [state, setState] = useState<AppState>();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState("search");
+  const [viewTarget, setViewTarget] = useState("");
   const [job, setJob] = useState<Job>();
   const [signingIn, setSigningIn] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -58,7 +62,10 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
   }
 
   async function run(type: string, params: Record<string, unknown>) {
-    const started = await startJob(type, { ...params, accounts: Array.from(selected) });
+    const picked = typeof params.account === "string" && params.account ? [params.account] : undefined;
+    const accounts =
+      SINGLE_ACCOUNT.has(type) && picked ? picked : Array.from(selected);
+    const started = await startJob(type, { ...params, accounts });
     setJob(started);
     trackJob(started.id);
   }
@@ -82,6 +89,7 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
   }
 
   const busy = job?.status === "queued" || job?.status === "running" || job?.status === "waiting";
+  const selectedAccounts = (state?.accounts ?? []).filter((a) => selected.has(a.id));
 
   return (
     <BeamsBackground className="bg-background" intensity="subtle">
@@ -115,15 +123,34 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
               <TabBar tabs={TABS} active={tab} onChange={setTab} />
 
               {tab === "search" && <SearchForm busy={busy} onSubmit={(p) => run("search", p)} />}
-              {tab === "view" && <ListingForm busy={busy} onSubmit={(p) => run("view", p)} />}
+              {tab === "view" && (
+                <ListingForm
+                  busy={busy}
+                  accounts={selectedAccounts}
+                  listing={viewTarget}
+                  onListingChange={setViewTarget}
+                  onSubmit={(p) => run("view", p)}
+                />
+              )}
               {tab === "offer" && <OfferForm busy={busy} onSubmit={(p) => run("offer", p)} />}
-              {tab === "message" && <MessageForm busy={busy} onSubmit={(p) => run("message", p)} />}
-              {tab === "post" && <PostForm busy={busy} onSubmit={(p) => run("post", p)} />}
+              {tab === "message" && (
+                <MessageForm busy={busy} accounts={selectedAccounts} onSubmit={(p) => run("message", p)} />
+              )}
+              {tab === "post" && (
+                <PostForm busy={busy} accounts={selectedAccounts} onSubmit={(p) => run("post", p)} />
+              )}
               {tab === "history" && <HistoryPanel history={state?.history ?? []} />}
             </CardContent>
           </Card>
 
-          <JobConsole job={job} onPromptAnswered={() => job && trackJob(job.id)} />
+          <JobConsole
+            job={job}
+            onPromptAnswered={() => job && trackJob(job.id)}
+            onOpenListing={(url) => {
+              setViewTarget(url);
+              setTab("view");
+            }}
+          />
         </div>
       </div>
     </BeamsBackground>

@@ -20,7 +20,13 @@ function collectListings(result: unknown): Array<ListingLike & { url: string; ti
   return [];
 }
 
-export default function ResultView({ result }: { result: unknown }) {
+export default function ResultView({
+  result,
+  onOpenListing,
+}: {
+  result: unknown;
+  onOpenListing?: (url: string) => void;
+}) {
   if (result === undefined || result === null) return null;
 
   const listings = collectListings(result);
@@ -28,20 +34,28 @@ export default function ResultView({ result }: { result: unknown }) {
     return (
       <div className="grid gap-2 sm:grid-cols-2">
         {listings.map((listing, i) => (
-          <a
+          <div
             key={`${listing.url}-${i}`}
-            href={listing.url}
-            target="_blank"
-            rel="noreferrer"
-            className="block rounded-lg border border-border bg-background/60 p-3 text-sm transition-colors hover:border-primary/40 hover:bg-muted/40"
+            className="rounded-lg border border-border bg-background/60 p-3 text-sm transition-colors hover:border-primary/40 hover:bg-muted/40"
           >
-            <div className="font-medium tabular-nums text-primary">
-              {typeof listing.price === "number"
-                ? formatMoney(listing.price)
-                : (listing.priceText as string) || "—"}
-            </div>
-            <div className="mt-0.5 line-clamp-2 text-foreground/90">{listing.title}</div>
-          </a>
+            <a href={listing.url} target="_blank" rel="noreferrer" className="block">
+              <div className="font-medium tabular-nums text-primary">
+                {typeof listing.price === "number"
+                  ? formatMoney(listing.price)
+                  : (listing.priceText as string) || "—"}
+              </div>
+              <div className="mt-0.5 line-clamp-2 text-foreground/90">{listing.title}</div>
+            </a>
+            {onOpenListing && (
+              <button
+                type="button"
+                className="mt-2 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                onClick={() => onOpenListing(listing.url)}
+              >
+                Open in Listing tab
+              </button>
+            )}
+          </div>
         ))}
       </div>
     );
