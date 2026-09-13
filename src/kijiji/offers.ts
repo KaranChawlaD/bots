@@ -1,3 +1,4 @@
+import type { AccountStyle } from "../config.js";
 import type { Comparable } from "./comps.js";
 import type { ListingSummary } from "./listings.js";
 
@@ -20,6 +21,8 @@ export interface OfferInput {
   comparables?: Comparable[];
   /** Price off the cheapest comparable instead of a percentage of the ask. */
   priceMatch?: boolean;
+  /** How the sending account's owner writes. */
+  style?: AccountStyle;
 }
 
 export interface Offer {
@@ -68,6 +71,39 @@ const templates: Array<(context: { title: string; amount: number }) => string> =
     `Hi there, nice listing. I can offer $${amount} and pick it up this week — let me know if that's workable.`,
 ];
 
+const slangSwaps: Array<[RegExp, string]> = [
+  [/\bHello\b/g, "Hey"],
+  [/\bHi there\b/g, "Hey"],
+  [/\bHi!/g, "Hey!"],
+  [/\bWould you take\b/g, "Would you do"],
+  [/\bHappy to come to you\b/g, "Can come to you"],
+  [/\bLet me know\b/g, "lmk"],
+  [/\blet me know\b/g, "lmk"],
+  [/\bAny chance you could\b/g, "Any chance you'd"],
+];
+
+/** Keeps the offer itself: the sentence naming the amount. */
+function briefest(text: string): string {
+  const sentences = text.match(/[^.!?]+[.!?]*/g) ?? [text];
+  const offerSentence = sentences.find((sentence) => sentence.includes("$"));
+  return (offerSentence ?? sentences[0] ?? text).trim();
+}
+
+/**
+ * Only the prose is restyled. Links and quoted prices stay exactly as they are,
+ * since lowercasing a URL can break it.
+ */
+function applyStyle(text: string, style: AccountStyle | undefined): string {
+  if (!style) return text;
+  let out = style.length === "brief" ? briefest(text) : text;
+  if (style.slang) {
+    for (const [pattern, replacement] of slangSwaps) out = out.replace(pattern, replacement);
+  }
+  if (style.casing === "lower") out = out.toLowerCase();
+  if (style.emoticons) out = `${out} :)`;
+  return out;
+}
+
 /**
  * Quotes the cheaper listings so the seller can check them: each one is a live
  * ad with its own price and link, not a claim they have to take on faith.
@@ -89,10 +125,14 @@ export function draftOffer(
 ): Offer {
   const amount = offerPrice(listing, input);
   const template = templates[(input.variant ?? 0) % templates.length]!;
-  let body = template({ title: listing.title.trim(), amount });
+  let body = applyStyle(template({ title: listing.title.trim(), amount }), input.style);
   const comparables = input.comparables ?? [];
   if (comparables.length > 0) {
-    body = `${body}\n\n${comparableLines(comparables)}\n\nAny chance you could match that? Yours is closer to me, so I'd rather buy from you.`;
+    const ask = applyStyle(
+      "Any chance you could match that? Yours is closer to me, so I'd rather buy from you.",
+      input.style,
+    );
+    body = `${body}\n\n${comparableLines(comparables)}\n\n${ask}`;
   }
   return {
     amount,
