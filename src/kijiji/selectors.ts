@@ -69,6 +69,13 @@ export const selectors = {
     'a[href*="/o-profile/"]',
   ],
   listingLocation: ['[data-testid="vip-location"]', 'span[itemprop="address"]'],
+  /** Breadcrumb links above the title — they point into the /b-… category URLs. */
+  listingBreadcrumb: [
+    'nav[aria-label*="breadcrumb" i] a',
+    'ol[class*="breadcrumb" i] a',
+    '[class*="breadcrumb" i] a',
+    'main a[href^="/b-"]',
+  ],
   /** Only openers — never the composer's own "Send message" submit button. */
   messageOpenButton: [
     '[data-testid="vip-contact-message"]',
@@ -113,13 +120,32 @@ export const selectors = {
   ],
   /** Kijiji asks for a site-wide location before it will render the ad form. */
   siteLocationPrompt: ['text=/to see classifieds ads or post your own ad/i'],
-  postTitleField: ['input[name="title"]', 'input[data-testid="title-input"]', "#postad-title"],
+  postTitleField: [
+    'input[name="title"]',
+    'input[data-testid="title-input"]',
+    "#postad-title",
+    'input[name*="title" i]',
+  ],
   postDescriptionField: [
     'textarea[name="description"]',
     'textarea[data-testid="description-input"]',
     "#pstad-descrptn",
+    'textarea[name*="descr" i]',
+    'textarea[id*="descr" i]',
+    'textarea[aria-label*="escription" i]',
+    // The redesigned form may use a rich-text box instead of a textarea.
+    '[contenteditable="true"][role="textbox"]',
+    'form [contenteditable="true"]',
+    // Last resort: the ad-details textarea is the first one in the form, well
+    // before the location textarea further down the page.
+    "form textarea",
   ],
-  postPriceField: ['input[name="price"]', 'input[data-testid="price-input"]', "#PriceAmount"],
+  postPriceField: [
+    'input[name="price"]',
+    'input[data-testid="price-input"]',
+    "#PriceAmount",
+    'input[name*="price" i]',
+  ],
   postLocationField: [
     "textarea#location",
     'input[name="location"]',

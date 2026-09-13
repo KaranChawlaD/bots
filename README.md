@@ -125,8 +125,10 @@ and every message still goes out from the account of the person it belongs to.
 `--price-match` has the agent search Kijiji for the same item, keep the listings
 that are genuinely cheaper, and quote them with their prices and links so the
 seller can check them. Comps hunt all of Canada — the point is gauging the
-market, not the neighbourhood. The offer is then the cheapest of those (still
-bounded by `--floor`/`--ceiling`), rather than a percentage of the ask.
+market, not the neighbourhood. When neither `--amount` nor `--percent` is set,
+the offer anchors to the cheapest of those (still bounded by
+`--floor`/`--ceiling`); with an explicit percentage or amount, comps are cited
+in the message but don't set the number.
 
 Comparables are filtered before they are cited: a real price, cheaper than the
 ask, a clear majority of the title words in common, and no lower than

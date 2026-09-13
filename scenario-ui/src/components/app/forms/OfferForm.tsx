@@ -78,7 +78,6 @@ export default function OfferForm({
           <div key={a.id} className="space-y-3 rounded-lg border border-border p-3">
             <div>
               <p className="text-sm font-medium text-foreground/90">{a.label ?? a.id}</p>
-              <p className="text-xs text-muted-foreground">{a.email}</p>
             </div>
             <Row className="sm:grid-cols-2">
               <Field label="Percent of ask">
@@ -114,7 +113,7 @@ export default function OfferForm({
       </ParticleButton>
       <p className="text-xs text-muted-foreground">
         An agent with both fields blank sits this one out. Drafts land in the run panel on the
-        right — send each one from the Message tab after you approve it.
+        right — send each one from the Message tab, or hit Send all to send them all.
       </p>
     </form>
   );

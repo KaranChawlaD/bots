@@ -1,6 +1,7 @@
 export const KIJIJI_BASE = "https://www.kijiji.ca";
 export const LOGIN_URL = `${KIJIJI_BASE}/consumer/login`;
 export const MESSAGES_URL = `${KIJIJI_BASE}/m-msg-my-messages/`;
+export const MY_ADS_URL = `${KIJIJI_BASE}/m-my-ads`;
 
 export interface SearchQuery {
   keywords: string;

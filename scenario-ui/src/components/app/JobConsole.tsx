@@ -81,6 +81,7 @@ export default function JobConsole({
   onOpenListing,
   onDraftOffer,
   onSendOffer,
+  onSendAllOffers,
 }: {
   job?: Job;
   jobs?: Job[];
@@ -90,6 +91,7 @@ export default function JobConsole({
   onOpenListing?: (url: string) => void;
   onDraftOffer?: (url: string) => void;
   onSendOffer?: (draft: { listing: string; text: string; account?: string }) => void;
+  onSendAllOffers?: (drafts: Array<{ account: string; listing: string; text: string }>) => void;
 }) {
   return (
     <Card className="flex h-full flex-col">
@@ -132,6 +134,7 @@ export default function JobConsole({
             onOpenListing={onOpenListing}
             onDraftOffer={onDraftOffer}
             onSendOffer={onSendOffer}
+            onSendAllOffers={onSendAllOffers}
           />
         )}
 

@@ -19,7 +19,11 @@ export interface OfferInput {
   variant?: number;
   /** Cheaper live listings of the same item, quoted in the message. */
   comparables?: Comparable[];
-  /** Price off the cheapest comparable instead of a percentage of the ask. */
+  /**
+   * Anchor the offer to the cheapest comparable — only when neither amount
+   * nor percent is set. With an explicit percent, comps are still cited in
+   * the message but don't set the number.
+   */
   priceMatch?: boolean;
   /** How the sending account's owner writes. */
   style?: AccountStyle;
@@ -38,17 +42,19 @@ function cheapest(comparables: Comparable[] | undefined): Comparable | undefined
 }
 
 export function offerPrice(listing: Pick<ListingSummary, "price">, input: OfferInput): number {
-  const roundTo = input.roundTo ?? 5;
   let amount: number;
   const match = input.priceMatch ? cheapest(input.comparables) : undefined;
   if (input.amount !== undefined) {
     amount = input.amount;
+  } else if (listing.price !== undefined && (input.percent !== undefined || !match)) {
+    // An explicit percentage beats the comp anchor; below $50 the step shrinks
+    // to whole dollars or $5 rounding swamps the percentage. Round down:
+    // rounding up would offer more than the percentage asked for.
+    const raw = (listing.price * (input.percent ?? 85)) / 100;
+    const roundTo = input.roundTo ?? (raw >= 50 ? 5 : 1);
+    amount = raw >= roundTo ? Math.floor(raw / roundTo) * roundTo : Math.max(1, Math.round(raw));
   } else if (match) {
     amount = match.price;
-  } else if (listing.price !== undefined) {
-    // Round down: rounding up would offer more than the percentage asked for.
-    const raw = (listing.price * (input.percent ?? 85)) / 100;
-    amount = raw >= roundTo ? Math.floor(raw / roundTo) * roundTo : Math.max(1, Math.round(raw));
   } else {
     throw new Error(
       "This listing has no readable price, so an offer percentage can't be applied — pass --amount instead.",

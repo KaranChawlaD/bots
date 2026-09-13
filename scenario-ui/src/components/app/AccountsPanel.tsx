@@ -54,7 +54,6 @@ export default function AccountsPanel({
                       title={account.signedIn ? "signed in" : "not signed in"}
                     />
                   </span>
-                  <span className="block truncate text-xs text-muted-foreground">{account.email}</span>
                   <span className="block text-xs text-muted-foreground/80">{account.session}</span>
                 </span>
               </label>
