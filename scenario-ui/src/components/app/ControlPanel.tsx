@@ -10,7 +10,7 @@ import ListingForm from "@/components/app/forms/ListingForm";
 import OfferForm from "@/components/app/forms/OfferForm";
 import MessageForm from "@/components/app/forms/MessageForm";
 import PostForm from "@/components/app/forms/PostForm";
-import { getJob, getState, startJob, type AppState, type Job } from "@/lib/api";
+import { getJob, getState, listJobs, startJob, type AppState, type Job } from "@/lib/api";
 
 const TABS = [
   { id: "search", label: "Search" },
@@ -40,6 +40,7 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
     nonce: number;
   }>({ nonce: 0 });
   const [job, setJob] = useState<Job>();
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [signingIn, setSigningIn] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -47,6 +48,8 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
     const next = await getState();
     setState(next);
     setSelected((prev) => (prev.size === 0 ? new Set(next.accounts.map((a) => a.id)) : prev));
+    const jobList = await listJobs().catch(() => undefined);
+    if (jobList) setJobs(jobList.jobs);
   }, []);
 
   useEffect(() => {
@@ -60,7 +63,10 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
   function trackJob(id: string) {
     const poll = async () => {
       const updated = await getJob(id);
-      setJob(updated);
+      setJobs((prev) => prev.map((j) => (j.id === updated.id ? updated : j)));
+      // Keep showing whichever run is open — polling must not pull an older
+      // draft out from under you while another job finishes.
+      setJob((prev) => (prev?.id === updated.id ? updated : prev));
       if (updated.status === "done" || updated.status === "failed") {
         void refreshState();
         return;
@@ -106,7 +112,11 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
     }
   }
 
-  const busy = job?.status === "queued" || job?.status === "running" || job?.status === "waiting";
+  // Busy reflects the queue, not the run being looked at — an old draft can
+  // be open while another job is still working.
+  const busy = jobs.some(
+    (j) => j.status === "queued" || j.status === "running" || j.status === "waiting",
+  );
   const selectedAccounts = (state?.accounts ?? []).filter((a) => selected.has(a.id));
 
   return (
@@ -183,6 +193,9 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
 
           <JobConsole
             job={job}
+            jobs={jobs}
+            history={state?.history ?? []}
+            onSelectJob={setJob}
             onPromptAnswered={() => job && trackJob(job.id)}
             onOpenListing={(url) => {
               setViewTarget(url);

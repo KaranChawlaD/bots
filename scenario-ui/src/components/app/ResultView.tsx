@@ -1,4 +1,5 @@
 import { formatMoney } from "@/lib/format";
+import type { SendRecord } from "@/lib/api";
 
 interface ListingLike {
   url?: unknown;
@@ -45,13 +46,38 @@ function collectOffers(result: unknown): Array<OfferLike & { listing: string; st
 const actionClass =
   "text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline";
 
+/** Ad id from a listing URL or a bare numeric id — matches the server side. */
+function adIdOf(url: string): string | undefined {
+  const fromQuery = /[?&]adId=(\d+)/.exec(url);
+  if (fromQuery?.[1]) return fromQuery[1];
+  const fromPath = /\/(\d{6,})(?:[/?#]|$)/.exec(url);
+  if (fromPath?.[1]) return fromPath[1];
+  return /^\d+$/.test(url) ? url : undefined;
+}
+
+function alreadySent(
+  offer: OfferLike & { listing: string },
+  history: SendRecord[] | undefined,
+): boolean {
+  if (!history || typeof offer.account !== "string") return false;
+  const adId = adIdOf(offer.listing);
+  return history.some(
+    (record) =>
+      record.accountId === offer.account &&
+      (record.listingUrl === offer.listing ||
+        (adId !== undefined && adIdOf(record.listingUrl) === adId)),
+  );
+}
+
 export default function ResultView({
   result,
+  history,
   onOpenListing,
   onDraftOffer,
   onSendOffer,
 }: {
   result: unknown;
+  history?: SendRecord[];
   onOpenListing?: (url: string) => void;
   onDraftOffer?: (url: string) => void;
   onSendOffer?: (draft: { listing: string; text: string; account?: string }) => void;
@@ -134,7 +160,15 @@ export default function ResultView({
             {typeof offer.reason === "string" && offer.reason && (
               <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{offer.reason}</p>
             )}
-            {onSendOffer && offer.status === "drafted" && typeof offer.message === "string" && (
+            {offer.status === "drafted" && alreadySent(offer, history) && (
+              <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                sent
+              </p>
+            )}
+            {onSendOffer &&
+              offer.status === "drafted" &&
+              !alreadySent(offer, history) &&
+              typeof offer.message === "string" && (
               <button
                 type="button"
                 className={`mt-2 ${actionClass}`}

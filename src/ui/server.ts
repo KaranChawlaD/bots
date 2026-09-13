@@ -305,7 +305,10 @@ function jobLabel(request: JobRequest): string {
   if (type === "search") return `search "${str(params, "keywords") ?? ""}"`;
   if (type === "view") return `view ${str(params, "listing") ?? ""}`;
   if (type === "message") return `message ${str(params, "listing") ?? ""}`;
-  if (type === "offer") return `offer on ${lines(params, "listings").length} listing(s)`;
+  if (type === "offer") {
+    const account = str(params, "account");
+    return `offer on ${lines(params, "listings").length} listing(s)${account ? ` via ${account}` : ""}`;
+  }
   if (type === "post") return `post "${str(params, "title") ?? ""}"`;
   return type;
 }
