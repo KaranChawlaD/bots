@@ -22,7 +22,7 @@ const TABS = [
 ];
 
 /** Commands that act through exactly one account — the form picks which. */
-const SINGLE_ACCOUNT = new Set(["view", "message", "post"]);
+const SINGLE_ACCOUNT = new Set(["view", "offer", "message", "post"]);
 
 export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) {
   const [state, setState] = useState<AppState>();

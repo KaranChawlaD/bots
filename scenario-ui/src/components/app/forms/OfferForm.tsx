@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Checkbox, Field, Row, TextArea, TextInput } from "@/components/ui/field";
+import { Checkbox, Field, Row, Select, TextArea, TextInput } from "@/components/ui/field";
 import ParticleButton from "@/components/kokonutui/particle-button";
 import type { AccountState } from "@/lib/api";
 
@@ -15,30 +15,25 @@ export default function OfferForm({
   onSubmit: (params: Record<string, unknown>) => void;
 }) {
   const [listings, setListings] = useState(initialListings);
+  const [account, setAccount] = useState("");
   const [percent, setPercent] = useState("85");
   const [amount, setAmount] = useState("");
   const [floor, setFloor] = useState("");
   const [ceiling, setCeiling] = useState("");
   const [note, setNote] = useState("");
   const [priceMatch, setPriceMatch] = useState(false);
-  const [everyAgent, setEveryAgent] = useState(false);
-  const [perAgent, setPerAgent] = useState<Record<string, string>>({});
   const [comps, setComps] = useState("3");
+  const chosen = accounts.some((a) => a.id === account) ? account : (accounts[0]?.id ?? "");
 
   return (
     <form
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
-        const overrides = Object.fromEntries(
-          Object.entries(perAgent)
-            .filter(([, v]) => v.trim() !== "")
-            .map(([id, v]) => [id, { percent: v }]),
-        );
         onSubmit({
-          listings, percent, amount, floor, ceiling, note, priceMatch, everyAgent, comps,
+          listings, percent, amount, floor, ceiling, note, priceMatch, comps,
+          account: chosen,
           draftOnly: true,
-          ...(Object.keys(overrides).length > 0 ? { perAgent: overrides } : {}),
         });
       }}
     >
@@ -50,6 +45,15 @@ export default function OfferForm({
           value={listings}
           onChange={(e) => setListings(e.target.value)}
         />
+      </Field>
+      <Field label="Agent" hint="Offers are drafted per client — pick one, draft, then pick the next.">
+        <Select value={chosen} onChange={(e) => setAccount(e.target.value)}>
+          {accounts.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.label ?? a.id} — {a.email}
+            </option>
+          ))}
+        </Select>
       </Field>
       <Row className="sm:grid-cols-4">
         <Field label="Percent of ask">
@@ -81,39 +85,8 @@ export default function OfferForm({
         <Field label="Comps">
           <TextInput type="number" min={1} value={comps} onChange={(e) => setComps(e.target.value)} />
         </Field>
-        <Checkbox
-          label="Offer from every selected agent"
-          checked={everyAgent}
-          onChange={(e) => setEveryAgent(e.target.checked)}
-        />
       </Row>
-      {everyAgent && !amount.trim() && (
-        <Field
-          label="Percent of ask per agent"
-          hint="Each client can offer a different share of the asking price — blank uses the value above."
-        >
-          <div className="grid gap-2 sm:grid-cols-2">
-            {accounts.map((a) => (
-              <div key={a.id} className="flex items-center gap-2">
-                <span className="w-28 shrink-0 truncate text-xs text-muted-foreground" title={a.email}>
-                  {a.label ?? a.id}
-                </span>
-                <TextInput
-                  type="number"
-                  min={1}
-                  max={100}
-                  placeholder={percent || "85"}
-                  value={perAgent[a.id] ?? ""}
-                  onChange={(e) =>
-                    setPerAgent((prev) => ({ ...prev, [a.id]: e.target.value }))
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        </Field>
-      )}
-      <ParticleButton type="submit" disabled={busy || !listings.trim()}>
+      <ParticleButton type="submit" disabled={busy || !listings.trim() || !chosen}>
         Draft offers
       </ParticleButton>
       <p className="text-xs text-muted-foreground">
