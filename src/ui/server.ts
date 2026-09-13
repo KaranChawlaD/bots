@@ -187,11 +187,18 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
     // Draft-only mode: the panel reviews each message and sends it as its own
     // job, so the offer run never sends on its own.
     const draftOnly = bool(params, "draftOnly");
+    // Every-agent mode: one offer per selected account for each listing, so
+    // the same listing can be offered on by every agent at once.
+    const everyAgent = bool(params, "everyAgent");
+
+    const work = everyAgent
+      ? targets.flatMap((target) => accounts.map((account) => ({ target, account })))
+      : targets.map((target, index) => ({ target, account: accounts[index % accounts.length]! }));
 
     const outcomes: Array<Record<string, unknown>> = [];
-    for (const [index, target] of targets.entries()) {
-      const account = accounts[index % accounts.length]!;
-      log.info(`offer ${index + 1}/${targets.length} — ${account.id} → ${target}`);
+    for (const [index, item] of work.entries()) {
+      const { target, account } = item;
+      log.info(`offer ${index + 1}/${work.length} — ${account.id} → ${target}`);
       try {
         const outcome = await withAgent(account, { showViewer: true }, async (agent) => {
           const listing = await view(agent, target);

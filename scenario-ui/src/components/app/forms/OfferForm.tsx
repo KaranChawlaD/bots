@@ -18,6 +18,7 @@ export default function OfferForm({
   const [ceiling, setCeiling] = useState("");
   const [note, setNote] = useState("");
   const [priceMatch, setPriceMatch] = useState(false);
+  const [everyAgent, setEveryAgent] = useState(false);
   const [comps, setComps] = useState("3");
 
   return (
@@ -25,7 +26,7 @@ export default function OfferForm({
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({ listings, percent, amount, floor, ceiling, note, priceMatch, comps, draftOnly: true });
+        onSubmit({ listings, percent, amount, floor, ceiling, note, priceMatch, everyAgent, comps, draftOnly: true });
       }}
     >
       <Field label="Listings (one per line)">
@@ -67,6 +68,11 @@ export default function OfferForm({
         <Field label="Comps">
           <TextInput type="number" min={1} value={comps} onChange={(e) => setComps(e.target.value)} />
         </Field>
+        <Checkbox
+          label="Offer from every selected agent"
+          checked={everyAgent}
+          onChange={(e) => setEveryAgent(e.target.checked)}
+        />
       </Row>
       <ParticleButton type="submit" disabled={busy || !listings.trim()}>
         Draft offers
