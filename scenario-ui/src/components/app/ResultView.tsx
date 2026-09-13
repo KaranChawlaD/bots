@@ -1,4 +1,5 @@
 import { formatMoney } from "@/lib/format";
+import { Button } from "@/components/ui/button";
 import type { SendRecord } from "@/lib/api";
 
 interface ListingLike {
@@ -15,6 +16,7 @@ interface OfferLike {
   message?: unknown;
   status?: unknown;
   reason?: unknown;
+  note?: unknown;
   comparables?: unknown;
 }
 
@@ -75,12 +77,14 @@ export default function ResultView({
   onOpenListing,
   onDraftOffer,
   onSendOffer,
+  onSendAllOffers,
 }: {
   result: unknown;
   history?: SendRecord[];
   onOpenListing?: (url: string) => void;
   onDraftOffer?: (url: string) => void;
   onSendOffer?: (draft: { listing: string; text: string; account?: string }) => void;
+  onSendAllOffers?: (drafts: Array<{ account: string; listing: string; text: string }>) => void;
 }) {
   if (result === undefined || result === null) return null;
 
@@ -127,8 +131,38 @@ export default function ResultView({
 
   const offers = collectOffers(result);
   if (offers.length > 0) {
+    const sendable = offers.filter(
+      (offer): offer is OfferLike & { listing: string; status: string; account: string; message: string } =>
+        offer.status === "drafted" &&
+        !alreadySent(offer, history) &&
+        typeof offer.account === "string" &&
+        typeof offer.message === "string" &&
+        offer.message !== "",
+    );
     return (
       <div className="space-y-2">
+        {onSendAllOffers && sendable.length > 0 && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 p-2">
+            <p className="text-xs text-muted-foreground">
+              {sendable.length} draft{sendable.length === 1 ? "" : "s"} ready
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() =>
+                onSendAllOffers(
+                  sendable.map((offer) => ({
+                    account: offer.account,
+                    listing: offer.listing,
+                    text: offer.message,
+                  })),
+                )
+              }
+            >
+              Send all
+            </Button>
+          </div>
+        )}
         {offers.map((offer, i) => (
           <div
             key={`${offer.listing}-${i}`}
@@ -159,6 +193,9 @@ export default function ResultView({
             )}
             {typeof offer.reason === "string" && offer.reason && (
               <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{offer.reason}</p>
+            )}
+            {typeof offer.note === "string" && offer.note && (
+              <p className="mt-1 text-xs text-sky-600 dark:text-sky-400">{offer.note}</p>
             )}
             {offer.status === "drafted" && alreadySent(offer, history) && (
               <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">

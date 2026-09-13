@@ -1,6 +1,9 @@
 import type { Locator, Page } from "playwright-core";
 import { selectors, type SelectorKey } from "./selectors.js";
 
+/** Kijiji's edge rejected the browser's IP — the job leg can retry via proxy. */
+export class BlockedError extends Error {}
+
 /**
  * Navigate and fail loudly when Kijiji's edge blocks the browser's IP, which
  * otherwise looks identical to "this search has no results".
@@ -9,7 +12,7 @@ export async function open(page: Page, url: string): Promise<void> {
   const response = await page.goto(url, { waitUntil: "domcontentloaded" });
   const status = response?.status();
   if (status === 429 || status === 403) {
-    throw new Error(
+    throw new BlockedError(
       `Kijiji answered ${status} for ${url}: the browser's IP is blocked. ` +
         `Give the account a residential "proxyUrl", or set "useProxy": true to use Steel's proxies.`,
     );

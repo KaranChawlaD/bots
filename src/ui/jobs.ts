@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { projectRoot } from "../config.js";
 import { addLogSink, type LogLine } from "../log.js";
 import { setPrompter } from "../safety.js";
 import { describe } from "../steel/agent.js";
@@ -85,6 +88,7 @@ export function startJob(
       job.error = describe(error);
       job.status = "failed";
     } finally {
+      persistJob(job);
       setPrompter(undefined);
       stopLogging();
       delete job.prompt;
@@ -127,6 +131,17 @@ function readText(answer: Answer): string {
 
 function readApproved(answer: Answer): boolean {
   return "approved" in answer ? answer.approved : false;
+}
+
+/** Finished jobs outlive the process — the log is the only post-mortem we get. */
+function persistJob(job: JobState): void {
+  try {
+    const dir = resolve(projectRoot, "data/jobs");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(resolve(dir, `${job.id}.json`), JSON.stringify(publicJob(job), null, 2));
+  } catch {
+    // Persistence is diagnostic only — never let it sink a finished job.
+  }
 }
 
 export function answerJob(id: string, answer: Answer): boolean {

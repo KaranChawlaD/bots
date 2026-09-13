@@ -33,7 +33,6 @@ export interface Job {
 
 export interface AccountState {
   id: string;
-  email: string;
   label?: string;
   session: string;
   signedIn: boolean;

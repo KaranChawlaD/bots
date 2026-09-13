@@ -1,16 +1,23 @@
 #!/usr/bin/env tsx
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { extname, join, normalize, resolve } from "node:path";
 import { loadSettings, projectRoot, selectAccounts, type Account, type Settings } from "../config.js";
 import { logger } from "../log.js";
 import { runAcrossAgents } from "../agents/pool.js";
-import { describe, withAgent } from "../steel/agent.js";
+import { describe, withAgent, type Agent } from "../steel/agent.js";
 import { loadProfile, profileAge } from "../steel/profiles.js";
 import { ensureLoggedIn, isLoggedIn } from "../kijiji/auth.js";
-import { search, view } from "../kijiji/listings.js";
+import {
+  search,
+  view,
+  ownListings,
+  type ListingDetail,
+  type ListingSummary,
+} from "../kijiji/listings.js";
 import { draftOffer, type OfferInput } from "../kijiji/offers.js";
-import { findComparables, type Comparable, type CompOptions } from "../kijiji/comps.js";
+import { findComparables, matchingListings, type Comparable, type CompOptions } from "../kijiji/comps.js";
 import { sendMessage } from "../kijiji/messages.js";
 import { postListing, validateDraft, type ListingDraft } from "../kijiji/post.js";
 import { sendHistory } from "../safety.js";
@@ -132,6 +139,93 @@ function perAgentParams(params: Record<string, unknown>): Record<string, unknown
   return raw as Record<string, unknown>;
 }
 
+interface DraftedOffer {
+  account: string;
+  listing: string;
+  text: string;
+}
+
+/** params.offers is the drafted batch shown after an offer run. */
+function draftedOffers(params: Record<string, unknown>): DraftedOffer[] {
+  const raw = params.offers;
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((entry) => {
+    const draft = entry as Partial<DraftedOffer> | null;
+    return typeof draft?.account === "string" &&
+      draft.account !== "" &&
+      typeof draft.listing === "string" &&
+      draft.listing !== "" &&
+      typeof draft.text === "string" &&
+      draft.text.trim() !== ""
+      ? [{ account: draft.account, listing: draft.listing, text: draft.text }]
+      : [];
+  });
+}
+
+/**
+ * Clone-mode photos come down over plain HTTP into a temp dir — the upload
+ * field wants local paths, and the OS reclaims the files on its own schedule.
+ */
+async function downloadPhotos(urls: string[]): Promise<string[]> {
+  const dir = await mkdtemp(join(tmpdir(), "kijiji-post-"));
+  const paths: string[] = [];
+  for (const [index, url] of urls.slice(0, 10).entries()) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok || !(res.headers.get("content-type") ?? "").startsWith("image/")) continue;
+      const path = join(dir, `photo-${index + 1}${extname(new URL(url).pathname) || ".jpg"}`);
+      await writeFile(path, Buffer.from(await res.arrayBuffer()));
+      paths.push(path);
+    } catch (error) {
+      log.warn(`  photo ${index + 1} would not download (${describe(error)})`);
+    }
+  }
+  if (paths.length > 0) log.info(`  cloned ${paths.length} photo(s) from the source ad`);
+  return paths;
+}
+
+/**
+ * Post and bundle build the draft the same way: the form's own fields win,
+ * and whatever is left blank falls back to the source ad's scraped values.
+ */
+async function buildListingDraft(
+  agent: Agent,
+  params: Record<string, unknown>,
+  price: ListingDraft["price"],
+): Promise<{ draft: ListingDraft; detail?: ListingDetail }> {
+  const source = str(params, "sourceListing");
+  const base: Partial<ListingDraft> = {};
+  let photos = lines(params, "photos");
+  let detail: ListingDetail | undefined;
+  if (source) {
+    detail = await view(agent, source);
+    base.title = detail.title;
+    base.description = detail.description;
+    base.location = detail.location;
+    // The source's breadcrumb walks the same category tree; the title is
+    // the fallback seed, which lets Kijiji suggest a category instead.
+    base.category = detail.category ?? detail.title;
+    log.info(
+      `cloning "${detail.title}" — category "${base.category}", ${detail.photos.length} photo(s) found`,
+    );
+    if (bool(params, "reusePhotos") && photos.length === 0 && detail.photos.length > 0) {
+      photos = await downloadPhotos(detail.photos);
+      if (photos.length === 0) log.warn("  source photos would not download — posting without them");
+    }
+  }
+  const draft: ListingDraft = {
+    title: str(params, "title") ?? base.title ?? "",
+    description: str(params, "description") ?? base.description ?? "",
+    category: str(params, "category") ?? base.category ?? "",
+    location: str(params, "location") ?? base.location ?? "",
+    price,
+    ...(num(params, "locationId") !== undefined ? { locationId: num(params, "locationId") } : {}),
+    ...(photos.length > 0 ? { photos } : {}),
+  };
+  validateDraft(draft);
+  return { draft, detail };
+}
+
 function compOptions(params: Record<string, unknown>): CompOptions {
   return {
     ...(num(params, "comps") !== undefined ? { limit: num(params, "comps") } : {}),
@@ -241,6 +335,25 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
       return override ? bool(override, "priceMatch") : priceMatch;
     };
 
+    // The fourth account carries most of the inventory — when comps are on,
+    // its own live ads join the pool and a match gets flagged on the outcome.
+    const sellerAccount =
+      settings.accounts.find((a) => a.id === (str(params, "sellerAccount") ?? "quaternary")) ??
+      settings.accounts[3];
+    let ownAds: ListingSummary[] = [];
+    if (sellerAccount && accounts.some((a) => wantsComps(a.id))) {
+      try {
+        ownAds = await withAgent(sellerAccount, { showViewer: true }, async (agent) => {
+          await ensureLoggedIn(agent);
+          return ownListings(agent);
+        });
+      } catch (error) {
+        log.warn(
+          `couldn't read ${sellerAccount.id}'s ads (${describe(error)}) — comps ignore them`,
+        );
+      }
+    }
+
     const outcomes: Array<Record<string, unknown>> = [];
     for (const [index, item] of work.entries()) {
       const { target, account } = item;
@@ -252,9 +365,17 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
           const citesComps = wantsComps(account.id);
           // Comps are a nice-to-have: a failed hunt must not sink the draft.
           let comparables: Comparable[] = [];
+          let ownMatch: ListingSummary | undefined;
           if (citesComps) {
             try {
-              comparables = await findComparables(agent, listing, comps);
+              const own = matchingListings(ownAds, listing);
+              ownMatch = own[0];
+              if (ownMatch) {
+                log.info(
+                  `  ${sellerAccount?.id ?? "seller"} also lists this — ${ownMatch.priceText || "no price"}`,
+                );
+              }
+              comparables = await findComparables(agent, listing, comps, own);
               if (comparables.length === 0) {
                 log.warn("  no cheaper comparable listings found — offering off the ask instead");
               }
@@ -279,7 +400,7 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
                 limits: settings.limits,
                 dryRun,
               });
-          return { offer, sent };
+          return { offer, sent, ownMatch };
         });
         outcomes.push({
           account: account.id,
@@ -288,6 +409,11 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
           comparables: outcome.offer.comparables ?? [],
           message: outcome.offer.message,
           status: outcome.sent ? outcome.sent.status : "drafted",
+          ...(outcome.ownMatch
+            ? {
+                note: `${sellerAccount?.id ?? "the fourth account"} is already selling this${outcome.ownMatch.priceText ? ` at ${outcome.ownMatch.priceText}` : ""}`,
+              }
+            : {}),
           ...(outcome.sent?.status === "skipped" ? { reason: outcome.sent.reason } : {}),
         });
       } catch (error) {
@@ -298,26 +424,176 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
     return outcomes;
   },
 
+  /**
+   * Sends a batch of already-drafted offers back to back. The button that
+   * queued this job is the approval, so per-send confirms are skipped —
+   * per-account rate limits still apply.
+   */
+  async sendOffers(params) {
+    const settings = loadSettings();
+    const drafts = draftedOffers(params);
+    if (drafts.length === 0) throw new Error("No drafted offers to send.");
+    const dryRun = bool(params, "dryRun");
+
+    const outcomes: Array<Record<string, unknown>> = [];
+    for (const [index, draft] of drafts.entries()) {
+      log.info(`offer ${index + 1}/${drafts.length} — ${draft.account} → ${draft.listing}`);
+      try {
+        const account = selectAccounts(settings, [draft.account])[0]!;
+        const sent = await withAgent(account, { showViewer: true }, (agent) =>
+          sendMessage(agent, draft.listing, draft.text, {
+            limits: settings.limits,
+            dryRun,
+            autoApprove: true,
+          }),
+        );
+        outcomes.push({
+          account: draft.account,
+          listing: draft.listing,
+          status: sent.status,
+          ...(sent.status === "skipped" ? { reason: sent.reason } : {}),
+        });
+        if (sent.status === "skipped") log.warn(`  skipped: ${sent.reason}`);
+      } catch (error) {
+        outcomes.push({
+          account: draft.account,
+          listing: draft.listing,
+          status: "failed",
+          reason: describe(error),
+        });
+        log.error(`  failed: ${describe(error)}`);
+      }
+    }
+    return outcomes;
+  },
+
+  /**
+   * Clone mode: sourceListing names an existing ad that supplies whatever the
+   * form left blank — title, description, category path, location, photos.
+   * The price is always the caller's own.
+   */
   async post(params) {
     const settings = loadSettings();
     const price = str(params, "price") === "free" || str(params, "price") === "contact"
       ? (str(params, "price") as "free" | "contact")
       : num(params, "price");
     if (price === undefined) throw new Error('Set a price, or "free" / "contact".');
-    const draft: ListingDraft = {
-      title: str(params, "title") ?? "",
-      description: str(params, "description") ?? "",
-      category: str(params, "category") ?? "",
-      location: str(params, "location") ?? "",
-      price,
-      ...(num(params, "locationId") !== undefined ? { locationId: num(params, "locationId") } : {}),
-      ...(lines(params, "photos").length > 0 ? { photos: lines(params, "photos") } : {}),
-    };
-    validateDraft(draft);
     const account = oneAccount(settings, params);
-    return withAgent(account, { showViewer: true }, (agent) =>
-      postListing(agent, draft, { dryRun: bool(params, "dryRun") }),
-    );
+    const dryRun = bool(params, "dryRun");
+
+    return withAgent(account, { showViewer: true }, async (agent) => {
+      const { draft } = await buildListingDraft(agent, params, price);
+      return postListing(agent, draft, { dryRun });
+    });
+  },
+
+  /**
+   * The whole deal in one click: the seller account clones the source ad at
+   * its own price and publishes it, then every buying account sends an offer
+   * on the source ad at its percent of ask. The button press is the approval
+   * for both — no per-step confirms.
+   */
+  async bundle(params) {
+    const settings = loadSettings();
+    const source = str(params, "sourceListing");
+    if (!source) throw new Error("Enter the listing to clone.");
+    const price = str(params, "price") === "free" || str(params, "price") === "contact"
+      ? (str(params, "price") as "free" | "contact")
+      : num(params, "price");
+    if (price === undefined) throw new Error('Set the seller\'s price, or "free" / "contact".');
+    const sellerId = str(params, "sellerAccount") ?? "quaternary";
+    const sellerAccount = selectAccounts(settings, [sellerId])[0];
+    if (!sellerAccount) throw new Error(`No account named "${sellerId}".`);
+    const buyers = accountsFor(settings, params).filter((a) => a.id !== sellerAccount.id);
+    if (buyers.length === 0) throw new Error("Give at least one buying account a percent.");
+    const input = offerInput(params);
+    const comps = compOptions(params);
+    const perAgent = perAgentParams(params);
+
+    const outcomes: Array<Record<string, unknown>> = [];
+
+    // Step one — clone and publish. Keep the scraped detail around so the
+    // buyers' offers are priced off it without a second view.
+    let detail: ListingDetail | undefined;
+    try {
+      const posted = await withAgent(sellerAccount, { showViewer: true }, async (agent) => {
+        const built = await buildListingDraft(agent, params, price);
+        const result = await postListing(agent, built.draft, { autoApprove: true });
+        return { ...built, result };
+      });
+      detail = posted.detail;
+      outcomes.push({
+        account: sellerAccount.id,
+        listing: source,
+        status: posted.result.status,
+        ...(typeof price === "number" ? { amount: price } : {}),
+        note: `cloned this ad${posted.result.url ? ` → ${posted.result.url}` : ""}`,
+      });
+    } catch (error) {
+      outcomes.push({
+        account: sellerAccount.id,
+        listing: source,
+        status: "failed",
+        reason: describe(error),
+      });
+      log.error(`clone failed (${describe(error)}) — buyers still offer on the source`);
+    }
+
+    // Step two — each buyer offers on the source ad at its own percent.
+    for (const [index, account] of buyers.entries()) {
+      log.info(`buyer ${index + 1}/${buyers.length} — ${account.id} → ${source}`);
+      try {
+        const outcome = await withAgent(account, { showViewer: true }, async (agent) => {
+          const listing = detail ?? (await view(agent, source));
+          const raw = perAgent[account.id];
+          const override =
+            raw && typeof raw === "object" && !Array.isArray(raw)
+              ? (raw as Record<string, unknown>)
+              : undefined;
+          const citesComps = override ? bool(override, "priceMatch") : false;
+          let comparables: Comparable[] = [];
+          if (citesComps) {
+            try {
+              comparables = await findComparables(agent, listing, comps);
+              if (comparables.length === 0) {
+                log.warn("  no cheaper comparable listings found — offering off the ask instead");
+              }
+            } catch (error) {
+              log.warn(`  comp hunt failed (${describe(error)}) — offering off the ask instead`);
+            }
+          }
+          const offer = draftOffer(listing, {
+            ...offerInputFor(input, override),
+            priceMatch: citesComps,
+            comparables,
+            variant: index,
+            ...(account.style ? { style: account.style } : {}),
+          });
+          log.info(
+            `  asking ${listing.priceText || "—"} → offering $${offer.amount}` +
+              `${comparables.length > 0 ? `, citing ${comparables.length} cheaper listing(s)` : ""}`,
+          );
+          const sent = await sendMessage(agent, source, offer.message, {
+            limits: settings.limits,
+            autoApprove: true,
+          });
+          return { offer, sent };
+        });
+        outcomes.push({
+          account: account.id,
+          listing: source,
+          amount: outcome.offer.amount,
+          comparables: outcome.offer.comparables ?? [],
+          message: outcome.offer.message,
+          status: outcome.sent.status,
+          ...(outcome.sent.status === "skipped" ? { reason: outcome.sent.reason } : {}),
+        });
+      } catch (error) {
+        outcomes.push({ account: account.id, listing: source, status: "failed", reason: describe(error) });
+        log.error(`  failed: ${describe(error)}`);
+      }
+    }
+    return outcomes;
   },
 };
 
@@ -330,7 +606,14 @@ function jobLabel(request: JobRequest): string {
     const who = ids(params, "accounts")?.join(", ") ?? str(params, "account");
     return `offer on ${lines(params, "listings").length} listing(s)${who ? ` via ${who}` : ""}`;
   }
-  if (type === "post") return `post "${str(params, "title") ?? ""}"`;
+  if (type === "sendOffers") {
+    return `send ${draftedOffers(params).length} drafted offer(s)`;
+  }
+  if (type === "post") {
+    const source = str(params, "sourceListing");
+    return `post "${str(params, "title") ?? (source ? `clone of ${source}` : "")}"`;
+  }
+  if (type === "bundle") return `bundle clone+offers on ${str(params, "sourceListing") ?? ""}`;
   return type;
 }
 
@@ -357,7 +640,6 @@ function state(): unknown {
       const profile = loadProfile(account.id);
       return {
         id: account.id,
-        email: account.email,
         ...(account.label ? { label: account.label } : {}),
         session: profile ? `saved ${profileAge(profile)}` : "no saved session",
         signedIn: Boolean(profile),

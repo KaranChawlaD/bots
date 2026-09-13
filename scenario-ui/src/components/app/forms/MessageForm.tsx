@@ -38,7 +38,7 @@ export default function MessageForm({
         <Select value={chosen} onChange={(e) => setAccount(e.target.value)}>
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.label ?? a.id} — {a.email}
+              {a.label ?? a.id}
             </option>
           ))}
         </Select>

@@ -127,11 +127,25 @@ export function pickComparables(
     }));
 }
 
+/** Listings in the pool whose titles identify the same item as the target. */
+export function matchingListings<T extends Pick<ListingSummary, "title">>(
+  pool: T[],
+  target: Pick<ListingSummary, "title">,
+  query?: string,
+): T[] {
+  const wanted = tokens(query ?? target.title);
+  const needed = Math.max(wanted.size >= 2 ? 2 : 1, Math.ceil(wanted.size * 0.6));
+  return pool.filter(
+    (listing) => [...tokens(listing.title)].filter((word) => wanted.has(word)).length >= needed,
+  );
+}
+
 /** Searches Kijiji for cheaper listings of the same item as `target`. */
 export async function findComparables(
   agent: Agent,
   target: Pick<ListingSummary, "title" | "price" | "url" | "id">,
   options: CompOptions = {},
+  extraPool: ListingSummary[] = [],
 ): Promise<Comparable[]> {
   if (target.price === undefined) {
     log.warn(`"${target.title}" has no readable price — nothing to compare against`);
@@ -145,14 +159,17 @@ export async function findComparables(
   const minRatio = options.minRatio ?? 0.5;
   // Price-matching gauges the market, not the neighbourhood: comps hunt all
   // of Canada rather than the Toronto-scoped browsing search.
-  const pool = await search(agent, {
-    keywords,
-    sort: "priceAsc",
-    minPrice: Math.ceil(target.price * minRatio),
-    maxPrice: Math.floor(target.price) - 1,
-    limit: options.scan ?? 25,
-    location: "canada",
-  });
+  const pool = [
+    ...(await search(agent, {
+      keywords,
+      sort: "priceAsc",
+      minPrice: Math.ceil(target.price * minRatio),
+      maxPrice: Math.floor(target.price) - 1,
+      limit: options.scan ?? 25,
+      location: "canada",
+    })),
+    ...extraPool,
+  ];
   const dropped: CompDropStats = {
     noPrice: 0,
     isTarget: 0,

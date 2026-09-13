@@ -4,6 +4,7 @@ import type { Browser, BrowserContext, Page } from "playwright-core";
 import type { Account } from "../config.js";
 import { steelApiKey } from "../config.js";
 import { logger } from "../log.js";
+import { BlockedError } from "../kijiji/page-utils.js";
 import { loadProfile, saveProfile } from "./profiles.js";
 
 const log = logger("steel");
@@ -29,6 +30,8 @@ export interface AgentOptions {
   useSavedProfile?: boolean;
   /** Persist the session context back to disk on close. Defaults to true. */
   saveProfileOnClose?: boolean;
+  /** Route through Steel's proxies regardless of the account's settings. */
+  forceProxy?: boolean;
 }
 
 function envFlag(name: string): boolean {
@@ -36,9 +39,12 @@ function envFlag(name: string): boolean {
   return value === "1" || value?.toLowerCase() === "true";
 }
 
-function proxyParams(account: Account): { proxyUrl: string } | { useProxy: true } | object {
+function proxyParams(
+  account: Account,
+  force = false,
+): { proxyUrl: string } | { useProxy: true } | object {
   if (account.proxyUrl) return { proxyUrl: account.proxyUrl };
-  if (account.useProxy ?? envFlag("STEEL_USE_PROXY")) return { useProxy: true };
+  if (force || (account.useProxy ?? envFlag("STEEL_USE_PROXY"))) return { useProxy: true };
   return {};
 }
 
@@ -69,7 +75,7 @@ export class Agent {
       ...(envFlag("STEEL_SOLVE_CAPTCHA") ? { solveCaptcha: true } : {}),
       ...(profile ? { sessionContext: profile.context } : {}),
       ...(account.userAgent ? { userAgent: account.userAgent } : {}),
-      ...proxyParams(account),
+      ...proxyParams(account, options.forceProxy ?? false),
       ...(account.region ? { region: account.region } : {}),
     });
 
@@ -139,10 +145,31 @@ export async function withAgent<T>(
   options: AgentOptions,
   run: (agent: Agent) => Promise<T>,
 ): Promise<T> {
-  const agent = await Agent.open(account, options);
   try {
-    return await run(agent);
-  } finally {
-    await agent.close();
+    const agent = await Agent.open(account, options);
+    try {
+      return await run(agent);
+    } finally {
+      await agent.close();
+    }
+  } catch (error) {
+    // A 429/403 means Kijiji's edge blocked the datacenter IP, not the
+    // account — rerun the leg once through Steel's proxy. Skipped when the
+    // account already rides a proxy, or when the run can't safely repeat.
+    if (
+      !(error instanceof BlockedError) ||
+      account.proxyUrl ||
+      account.useProxy ||
+      options.forceProxy
+    ) {
+      throw error;
+    }
+    log.warn(`[${account.id}] IP blocked — retrying once through Steel's proxy`);
+    const agent = await Agent.open(account, { ...options, forceProxy: true });
+    try {
+      return await run(agent);
+    } finally {
+      await agent.close();
+    }
   }
 }

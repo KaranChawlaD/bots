@@ -7,12 +7,14 @@ import JobConsole from "@/components/app/JobConsole";
 import HistoryPanel from "@/components/app/HistoryPanel";
 import SearchForm from "@/components/app/forms/SearchForm";
 import ListingForm from "@/components/app/forms/ListingForm";
+import BundleForm from "@/components/app/forms/BundleForm";
 import OfferForm from "@/components/app/forms/OfferForm";
 import MessageForm from "@/components/app/forms/MessageForm";
 import PostForm from "@/components/app/forms/PostForm";
 import { getJob, getState, listJobs, startJob, type AppState, type Job } from "@/lib/api";
 
 const TABS = [
+  { id: "bundle", label: "Bundle" },
   { id: "search", label: "Search" },
   { id: "view", label: "Listing" },
   { id: "offer", label: "Offer" },
@@ -155,6 +157,13 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
             <CardContent className="space-y-4 pt-1">
               <TabBar tabs={TABS} active={tab} onChange={setTab} />
 
+              {tab === "bundle" && (
+                <BundleForm
+                  busy={busy}
+                  accounts={state?.accounts ?? []}
+                  onSubmit={(p) => run("bundle", p)}
+                />
+              )}
               {tab === "search" && (
                 <SearchForm
                   busy={busy}
@@ -214,6 +223,7 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
               setMessageDraft((prev) => ({ ...draft, nonce: prev.nonce + 1 }));
               setTab("message");
             }}
+            onSendAllOffers={(drafts) => run("sendOffers", { offers: drafts })}
           />
         </div>
       </div>

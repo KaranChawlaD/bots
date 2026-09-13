@@ -1,6 +1,6 @@
 import type { Account } from "../config.js";
 import { logger } from "../log.js";
-import { Agent, describe, type AgentOptions } from "../steel/agent.js";
+import { describe, withAgent, type Agent, type AgentOptions } from "../steel/agent.js";
 
 const log = logger("pool");
 
@@ -25,15 +25,14 @@ export async function runAcrossAgents<T>(
 
   const worker = async (): Promise<void> => {
     for (let account = queue.shift(); account; account = queue.shift()) {
-      let agent: Agent | undefined;
       try {
-        agent = await Agent.open(account, agentOptions);
-        results.push({ accountId: account.id, value: await job(agent) });
+        results.push({
+          accountId: account.id,
+          value: await withAgent(account, agentOptions, job),
+        });
       } catch (error) {
         log.error(`[${account.id}] ${describe(error)}`);
         results.push({ accountId: account.id, error: describe(error) });
-      } finally {
-        if (agent) await agent.close();
       }
     }
   };
