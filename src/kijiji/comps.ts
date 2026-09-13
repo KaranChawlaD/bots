@@ -143,6 +143,7 @@ export async function findComparables(
     })),
   ];
   const comps = pickComparables(pool, target, options);
+  log.debug(`${pool.length} candidate(s) in the pool, ${comps.length} survived the filters`);
   log.info(
     `[${agent.account.id}] "${keywords}" → ${comps.length} cheaper comparable(s) under $${target.price}`,
   );

@@ -1,6 +1,7 @@
 import type { Page } from "playwright-core";
 import type { Agent } from "../steel/agent.js";
 import { logger } from "../log.js";
+import { ensureLoggedIn } from "./auth.js";
 import { dismissOverlays, findFirst, open, textOf } from "./page-utils.js";
 import { selectors } from "./selectors.js";
 import {
@@ -106,23 +107,40 @@ async function scrapeResultPage(page: Page): Promise<ListingSummary[]> {
  */
 export async function myAds(agent: Agent): Promise<ListingSummary[]> {
   const { page } = agent;
+  // /m-my-ads bounces to the login host when the saved session has expired,
+  // which would otherwise scrape as "zero ads".
+  await ensureLoggedIn(agent);
   await open(page, `${KIJIJI_BASE}/m-my-ads/active/1`);
   await dismissOverlays(page);
+  // The ads list renders client-side — wait for a real ad link, or the
+  // scrape below runs against an empty page.
+  await page
+    .waitForSelector('a[href*="adId="], a[href*="/v-"]', { timeout: 15_000 })
+    .catch(() => undefined);
   const raw = await page.evaluate(() => {
+    // Walk ancestors until one contains a price; the ad title's link may sit
+    // several wrappers deep inside the card that carries the price text.
+    const priceNear = (el: Element): string => {
+      let node: Element | null = el;
+      for (let depth = 0; depth < 5 && node; depth += 1) {
+        const hit = /\$[\d,]+(?:\.\d{2})?/.exec(
+          (node.textContent ?? "").replace(/\s+/g, " "),
+        );
+        if (hit) return hit[0];
+        node = node.parentElement;
+      }
+      return "";
+    };
     const anchors = Array.from(
       document.querySelectorAll<HTMLAnchorElement>('a[href*="adId="], a[href*="/v-"]'),
     );
     return anchors
-      .map((anchor) => {
-        const card =
-          anchor.closest("li, tr, article") ?? anchor.closest("div") ?? anchor;
-        return {
-          href: anchor.href,
-          title: (anchor.textContent ?? "").trim(),
-          text: (card.textContent ?? "").replace(/\s+/g, " ").trim(),
-        };
-      })
-      .filter((entry) => entry.href && entry.title);
+      .map((anchor) => ({
+        href: anchor.href,
+        title: (anchor.textContent ?? "").trim(),
+        priceText: priceNear(anchor),
+      }))
+      .filter((entry) => entry.href && entry.title.length > 2);
   });
 
   const seen = new Set<string>();
@@ -130,17 +148,19 @@ export async function myAds(agent: Agent): Promise<ListingSummary[]> {
   for (const entry of raw) {
     if (seen.has(entry.href)) continue;
     seen.add(entry.href);
-    const priceText = /\$[\d,]+(?:\.\d{2})?/.exec(entry.text)?.[0] ?? "";
     ads.push({
       ...(listingIdFromUrl(entry.href) ? { id: listingIdFromUrl(entry.href) } : {}),
       title: entry.title,
-      ...(parsePrice(priceText) !== undefined ? { price: parsePrice(priceText) } : {}),
-      priceText,
+      ...(parsePrice(entry.priceText) !== undefined
+        ? { price: parsePrice(entry.priceText) }
+        : {}),
+      priceText: entry.priceText,
       location: "",
       url: entry.href,
       postedAt: "",
     });
   }
+  for (const ad of ads) log.debug(`[${agent.account.id}] own ad: "${ad.title}" ${ad.priceText}`);
   log.info(`[${agent.account.id}] ${ads.length} active ad(s) of their own`);
   return ads;
 }
