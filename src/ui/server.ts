@@ -237,13 +237,20 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
       try {
         const outcome = await withAgent(account, { showViewer: true }, async (agent) => {
           const listing = await view(agent, target);
-          const comparables = priceMatch ? await findComparables(agent, listing, comps) : [];
-          if (priceMatch && comparables.length === 0) {
+          const rawOverride = perAgent[account.id];
+          const override =
+            rawOverride && typeof rawOverride === "object" && !Array.isArray(rawOverride)
+              ? (rawOverride as Record<string, unknown>)
+              : undefined;
+          // Citing comps is per agent: an override decides for that account.
+          const wantsComps = override ? bool(override, "priceMatch") : priceMatch;
+          const comparables = wantsComps ? await findComparables(agent, listing, comps) : [];
+          if (wantsComps && comparables.length === 0) {
             log.warn("  no cheaper comparable listings found — offering off the ask instead");
           }
           const offer = draftOffer(listing, {
-            ...offerInputFor(input, perAgent[account.id]),
-            priceMatch,
+            ...offerInputFor(input, override),
+            priceMatch: wantsComps,
             comparables,
             variant: index,
             ...(account.style ? { style: account.style } : {}),
@@ -306,8 +313,8 @@ function jobLabel(request: JobRequest): string {
   if (type === "view") return `view ${str(params, "listing") ?? ""}`;
   if (type === "message") return `message ${str(params, "listing") ?? ""}`;
   if (type === "offer") {
-    const account = str(params, "account");
-    return `offer on ${lines(params, "listings").length} listing(s)${account ? ` via ${account}` : ""}`;
+    const who = ids(params, "accounts")?.join(", ") ?? str(params, "account");
+    return `offer on ${lines(params, "listings").length} listing(s)${who ? ` via ${who}` : ""}`;
   }
   if (type === "post") return `post "${str(params, "title") ?? ""}"`;
   return type;

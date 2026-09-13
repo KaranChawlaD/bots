@@ -22,7 +22,7 @@ const TABS = [
 ];
 
 /** Commands that act through exactly one account — the form picks which. */
-const SINGLE_ACCOUNT = new Set(["view", "offer", "message", "post"]);
+const SINGLE_ACCOUNT = new Set(["view", "message", "post"]);
 
 export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) {
   const [state, setState] = useState<AppState>();
@@ -83,12 +83,17 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
 
   async function run(type: string, params: Record<string, unknown>) {
     const picked = typeof params.account === "string" && params.account ? [params.account] : undefined;
+    const provided = Array.isArray(params.accounts)
+      ? params.accounts.filter((a): a is string => typeof a === "string" && a !== "")
+      : [];
     const accounts =
       type === "search"
         ? [searchAccount?.id ?? "primary"]
         : SINGLE_ACCOUNT.has(type) && picked
           ? picked
-          : Array.from(selected);
+          : provided.length > 0
+            ? provided
+            : Array.from(selected);
     const started = await startJob(type, { ...params, accounts });
     setJob(started);
     trackJob(started.id);
@@ -170,7 +175,7 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
                 <OfferForm
                   key={offerDraft.nonce}
                   busy={busy}
-                  accounts={selectedAccounts}
+                  accounts={state?.accounts ?? []}
                   initialListings={offerDraft.listings}
                   onSubmit={(p) => run("offer", p)}
                 />
