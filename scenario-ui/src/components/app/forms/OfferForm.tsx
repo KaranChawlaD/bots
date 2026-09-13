@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { Checkbox, Field, Row, TextArea, TextInput } from "@/components/ui/field";
 import ParticleButton from "@/components/kokonutui/particle-button";
+import type { AccountState } from "@/lib/api";
 
 export default function OfferForm({
   busy,
+  accounts,
   initialListings = "",
   onSubmit,
 }: {
   busy: boolean;
+  accounts: AccountState[];
   initialListings?: string;
   onSubmit: (params: Record<string, unknown>) => void;
 }) {
@@ -19,6 +22,7 @@ export default function OfferForm({
   const [note, setNote] = useState("");
   const [priceMatch, setPriceMatch] = useState(false);
   const [everyAgent, setEveryAgent] = useState(false);
+  const [perAgent, setPerAgent] = useState<Record<string, string>>({});
   const [comps, setComps] = useState("3");
 
   return (
@@ -26,7 +30,16 @@ export default function OfferForm({
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit({ listings, percent, amount, floor, ceiling, note, priceMatch, everyAgent, comps, draftOnly: true });
+        const overrides = Object.fromEntries(
+          Object.entries(perAgent)
+            .filter(([, v]) => v.trim() !== "")
+            .map(([id, v]) => [id, { percent: v }]),
+        );
+        onSubmit({
+          listings, percent, amount, floor, ceiling, note, priceMatch, everyAgent, comps,
+          draftOnly: true,
+          ...(Object.keys(overrides).length > 0 ? { perAgent: overrides } : {}),
+        });
       }}
     >
       <Field label="Listings (one per line)">
@@ -74,6 +87,32 @@ export default function OfferForm({
           onChange={(e) => setEveryAgent(e.target.checked)}
         />
       </Row>
+      {everyAgent && !amount.trim() && (
+        <Field
+          label="Percent of ask per agent"
+          hint="Each client can offer a different share of the asking price — blank uses the value above."
+        >
+          <div className="grid gap-2 sm:grid-cols-2">
+            {accounts.map((a) => (
+              <div key={a.id} className="flex items-center gap-2">
+                <span className="w-28 shrink-0 truncate text-xs text-muted-foreground" title={a.email}>
+                  {a.label ?? a.id}
+                </span>
+                <TextInput
+                  type="number"
+                  min={1}
+                  max={100}
+                  placeholder={percent || "85"}
+                  value={perAgent[a.id] ?? ""}
+                  onChange={(e) =>
+                    setPerAgent((prev) => ({ ...prev, [a.id]: e.target.value }))
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        </Field>
+      )}
       <ParticleButton type="submit" disabled={busy || !listings.trim()}>
         Draft offers
       </ParticleButton>

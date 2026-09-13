@@ -160,6 +160,7 @@ export default function ControlPanel({ onSignOut }: { onSignOut?: () => void }) 
                 <OfferForm
                   key={offerDraft.nonce}
                   busy={busy}
+                  accounts={selectedAccounts}
                   initialListings={offerDraft.listings}
                   onSubmit={(p) => run("offer", p)}
                 />

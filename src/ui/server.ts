@@ -98,6 +98,40 @@ function offerInput(params: Record<string, unknown>): OfferInput {
   };
 }
 
+/**
+ * One account's overrides on top of the shared offer input — a different
+ * percent-of-ask per client, a different floor, its own note. Amount and
+ * percent stay mutually exclusive: whichever the override sets wins.
+ */
+function offerInputFor(base: OfferInput, raw: unknown): OfferInput {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
+  const params = raw as Record<string, unknown>;
+  const merged = { ...base };
+  const amount = num(params, "amount");
+  const percent = num(params, "percent");
+  if (amount !== undefined) {
+    merged.amount = amount;
+    delete merged.percent;
+  } else if (percent !== undefined) {
+    merged.percent = percent;
+    delete merged.amount;
+  }
+  const floor = num(params, "floor");
+  if (floor !== undefined) merged.floor = floor;
+  const ceiling = num(params, "ceiling");
+  if (ceiling !== undefined) merged.ceiling = ceiling;
+  const note = str(params, "note");
+  if (note) merged.note = note;
+  return merged;
+}
+
+/** params.perAgent maps account id → partial offer input. */
+function perAgentParams(params: Record<string, unknown>): Record<string, unknown> {
+  const raw = params.perAgent;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  return raw as Record<string, unknown>;
+}
+
 function compOptions(params: Record<string, unknown>): CompOptions {
   return {
     ...(num(params, "comps") !== undefined ? { limit: num(params, "comps") } : {}),
@@ -190,6 +224,7 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
     // Every-agent mode: one offer per selected account for each listing, so
     // the same listing can be offered on by every agent at once.
     const everyAgent = bool(params, "everyAgent");
+    const perAgent = perAgentParams(params);
 
     const work = everyAgent
       ? targets.flatMap((target) => accounts.map((account) => ({ target, account })))
@@ -207,7 +242,7 @@ const handlers: Record<string, (params: Record<string, unknown>) => Promise<unkn
             log.warn("  no cheaper comparable listings found — offering off the ask instead");
           }
           const offer = draftOffer(listing, {
-            ...input,
+            ...offerInputFor(input, perAgent[account.id]),
             priceMatch,
             comparables,
             variant: index,
